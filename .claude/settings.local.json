@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m pytest tests.py -v --tb=short)",
+      "Bash(pip3 install:*)",
+      "Bash(git add:*)"
     ]
   }
 }
