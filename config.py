@@ -19,8 +19,7 @@ PERSONA_TAGLINE: str = os.environ.get(
 )
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
-ANTHROPIC_API_KEY: str = os.environ.get("ANTHROPIC_API_KEY", "")
-LLM_MODEL: str = os.environ.get("LLM_MODEL", "claude-sonnet-4-6")
+# OPENAI_API_KEY is read directly in llm.py
 
 # ── Packs ─────────────────────────────────────────────────────────────────────
 # Each pack: name, price_usd, emoji, description, payment_link,

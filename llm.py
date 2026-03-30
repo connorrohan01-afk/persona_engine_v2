@@ -1,13 +1,17 @@
 """
-LLM layer — Claude API for tone/copy only.
+LLM layer — OpenAI GPT-3.5-turbo for tone/copy only.
 Never controls state, delivery, or payment logic.
 Returns plain strings that handlers inject into messages.
 """
 
 import logging
-from config import ANTHROPIC_API_KEY, LLM_MODEL, PERSONA_NAME
+import os
+
+from config import PERSONA_NAME
 
 logger = logging.getLogger(__name__)
+
+OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY", "")
 
 _client = None
 
@@ -16,13 +20,13 @@ def _get_client():
     global _client
     if _client is not None:
         return _client
-    if not ANTHROPIC_API_KEY:
+    if not OPENAI_API_KEY:
         return None
     try:
-        import anthropic
-        _client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+        from openai import AsyncOpenAI
+        _client = AsyncOpenAI(api_key=OPENAI_API_KEY)
     except ImportError:
-        logger.warning("anthropic package not installed — LLM disabled")
+        logger.warning("openai package not installed — LLM disabled")
         _client = None
     return _client
 
@@ -58,14 +62,15 @@ async def persona_message(stage: str, context: dict | None = None) -> str:
     )
 
     try:
-        import anthropic
-        response = await client.messages.create(
-            model=LLM_MODEL,
+        response = await client.chat.completions.create(
+            model="gpt-3.5-turbo",
             max_tokens=120,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
         )
-        return response.content[0].text.strip()
+        return response.choices[0].message.content.strip()
     except Exception as exc:
         logger.error("LLM call failed for stage=%s: %s", stage, exc)
         return fallbacks.get(stage, "")
