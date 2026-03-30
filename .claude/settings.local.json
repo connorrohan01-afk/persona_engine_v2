@@ -5,7 +5,10 @@
       "Bash(pip install:*)",
       "Bash(python -m pytest tests.py -v --tb=short)",
       "Bash(pip3 install:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+      "Bash(git commit:*)",
+      "Bash(git:*)"
     ]
   }
 }

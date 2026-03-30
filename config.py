@@ -6,7 +6,7 @@ Import this module everywhere instead of calling os.environ directly.
 import os
 
 # ── Bot ───────────────────────────────────────────────────────────────────────
-BOT_TOKEN: str = os.environ["BOT_TOKEN"]
+BOT_TOKEN: str = os.environ["TELEGRAM_BOT_TOKEN"]
 ADMIN_USER_ID: int = int(os.environ["ADMIN_USER_ID"])
 
 # ── Stripe ────────────────────────────────────────────────────────────────────
