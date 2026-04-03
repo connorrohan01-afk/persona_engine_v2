@@ -244,6 +244,42 @@ class TestEngagementScoring:
         assert _is_negative("nah")
         assert not _is_negative("yeah definitely")
 
+    def test_hesitant_detection(self):
+        from handlers import _is_hesitant
+        # Classic hesitant / ambiguous inputs
+        assert _is_hesitant("maybe")
+        assert _is_hesitant("not sure")
+        assert _is_hesitant("is it worth it")
+        assert _is_hesitant("i guess")
+        assert _is_hesitant("idk")
+        assert _is_hesitant("just browsing")
+        assert _is_hesitant("is it worth the money")
+        # Should NOT be hesitant
+        assert not _is_hesitant("yes please")
+        assert not _is_hesitant("no thanks")
+        assert not _is_hesitant("show me")
+
+    def test_hesitant_not_affirmative_or_negative(self):
+        from handlers import _is_hesitant, _is_affirmative, _is_negative
+        for phrase in ["maybe", "not sure", "i guess", "idk"]:
+            assert _is_hesitant(phrase)
+            assert not _is_affirmative(phrase)
+
+    def test_fallback_pools_are_varied(self):
+        from llm import _GREETING_FALLBACKS, _WARMUP_FALLBACKS, _HESITANT_FALLBACKS
+        assert len(_GREETING_FALLBACKS) >= 5
+        assert len(_WARMUP_FALLBACKS) >= 8
+        assert len(_HESITANT_FALLBACKS) >= 4
+        # All entries are non-empty strings
+        for pool in (_GREETING_FALLBACKS, _WARMUP_FALLBACKS, _HESITANT_FALLBACKS):
+            for line in pool:
+                assert isinstance(line, str) and len(line) > 0
+        # No greeting openers contain banned phrases
+        banned = ["hey there", "hi there", "hello", "hey!"]
+        for line in _GREETING_FALLBACKS:
+            for b in banned:
+                assert b not in line.lower(), f"Banned opener '{b}' found in: {line}"
+
 
 # ── Config / Packs ────────────────────────────────────────────────────────────
 

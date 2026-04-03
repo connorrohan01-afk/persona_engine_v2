@@ -40,6 +40,17 @@ _NEGATIVE = {
     "boring", "whatever", "not", "quit", "exit", "unsubscribe",
 }
 
+# Words/phrases that signal hesitation or ambiguity (≠ rejection, ≠ affirmative)
+_HESITANT_WORDS = {
+    "maybe", "idk", "dunno", "hmm", "hm", "worth", "expensive",
+    "pricey", "unsure", "depends", "suppose", "guess",
+}
+_HESITANT_PHRASES = [
+    "not sure", "is it worth", "i don't know", "i dunno",
+    "i guess", "worth the", "worth it", "how much", "that much",
+    "just browsing", "only browsing",
+]
+
 # Minimum warmup turns before triggering curiosity
 _WARMUP_MIN_TURNS = 3
 
@@ -75,11 +86,19 @@ def _score_message(text: str) -> int:
 
 
 def _is_affirmative(text: str) -> bool:
-    """Return True if the message is a clear yes/go-ahead."""
+    """Return True if the message is a clear yes/go-ahead.
+    Hesitant phrasing ('not sure', 'maybe') takes priority and returns False.
+    """
+    # Hesitant always wins over accidental keyword matches
+    if _is_hesitant(text):
+        return False
     text_lower = text.lower().strip()
     words = set(text_lower.split())
-    direct = bool(words & {"yes", "yeah", "yep", "yup", "sure", "ok", "okay",
+    # "sure" only counts when not negated ("not sure" → hesitant, handled above)
+    direct = bool(words & {"yes", "yeah", "yep", "yup", "ok", "okay",
                             "please", "go", "show", "do", "lets", "let's"})
+    if "sure" in words and "not" not in words:
+        direct = True
     phrase = any(p in text_lower for p in ["show me", "go ahead", "of course",
                                             "let's go", "lets go", "why not"])
     return direct or phrase
@@ -88,6 +107,19 @@ def _is_affirmative(text: str) -> bool:
 def _is_negative(text: str) -> bool:
     words = set(text.lower().split())
     return bool(words & {"no", "nope", "nah", "not", "stop", "bye", "quit"})
+
+
+def _is_hesitant(text: str) -> bool:
+    """
+    Return True for ambiguous/hesitant responses that are curiosity in disguise —
+    'maybe', 'not sure', 'is it worth it', 'I guess', 'just browsing'.
+    These should trigger a flirty exchange, NOT immediate pack display.
+    """
+    text_lower = text.lower()
+    words = set(text_lower.split())
+    if words & _HESITANT_WORDS:
+        return True
+    return any(p in text_lower for p in _HESITANT_PHRASES)
 
 
 # ── Guard / user helper ───────────────────────────────────────────────────────
@@ -313,22 +345,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await db.set_user_state(user_id, State.SOFT_INVITE)
         return
 
-    # ── SOFT_INVITE: yes → show packs, no → loop back to warmup ──────────────
+    # ── SOFT_INVITE: gate pack display behind engagement signal ──────────────
     if state == State.SOFT_INVITE:
+        # Track how many times we've already done a flirty exchange here
+        invite_attempts = context.user_data.get("soft_invite_attempts", 0)
+
         if _is_affirmative(text):
+            # Clear yes — show packs immediately
+            context.user_data.pop("soft_invite_attempts", None)
             await _show_packs(update, context)
-        elif _is_negative(text):
+
+        elif _is_negative(text) and invite_attempts == 0:
+            # First clear no — back to warmup, leave door open
             await db.set_rejection_flag(user_id, 1)
             await db.set_user_state(user_id, State.WARMUP)
+            context.user_data.pop("soft_invite_attempts", None)
             reply = await chat_reply(text, context={"stage": "rejected"})
             await _type_and_send(context.bot, chat_id, reply)
+
+        elif _is_hesitant(text) and invite_attempts == 0:
+            # First hesitant/ambiguous reply — one flirty exchange, stay in SOFT_INVITE
+            context.user_data["soft_invite_attempts"] = 1
+            reply = await chat_reply(text, context={"stage": "hesitant"})
+            await _type_and_send(context.bot, chat_id, reply)
+
         else:
-            # Ambiguous — gentle nudge, stay in SOFT_INVITE
-            await _type_and_send(
-                context.bot, chat_id,
-                "haha is that a yes? 👀",
-                delay=1.2,
-            )
+            # Second response (any kind) or second no — show packs, they've been warmed enough
+            context.user_data.pop("soft_invite_attempts", None)
+            await _show_packs(update, context)
+
         return
 
     # ── CURIOSITY: shouldn't normally receive a text here, treat like WARMUP ─
