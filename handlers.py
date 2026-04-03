@@ -54,8 +54,10 @@ _HESITANT_PHRASES = [
 # Minimum warmup turns before triggering curiosity
 _WARMUP_MIN_TURNS = 3
 
-# Turns in OFFER state required before re-showing pack buttons
-_OFFER_COOLDOWN_TURNS = 3
+# Turns in OFFER state before Luna will consider re-showing pack buttons
+_OFFER_COOLDOWN_TURNS = 5
+# Max turns in OFFER without a click before dropping back to warmup
+_OFFER_MAX_TURNS = 10
 
 # Phrases that signal real purchase intent (stronger than affirmative)
 _BUYING_SIGNAL_PHRASES = [
@@ -73,6 +75,21 @@ def _is_buying_signal(text: str) -> bool:
     if words & {"buy", "purchase", "paying"} and "not" not in words and "don't" not in words:
         return True
     return any(p in text_lower for p in _BUYING_SIGNAL_PHRASES)
+
+
+# Phrases that indicate the user is asking about the content specifically
+_CONTENT_QUESTION_PHRASES = [
+    "what's in", "what is in", "what do i get", "what's included",
+    "more about", "tell me about", "what kind", "what does it",
+    "show me", "what's the difference", "which one", "what pack",
+    "the vip", "the premium", "the starter", "pack a", "pack b", "pack c",
+]
+
+
+def _is_asking_about_content(text: str) -> bool:
+    """User is directly asking about the packs or content — a natural re-offer moment."""
+    text_lower = text.lower()
+    return any(p in text_lower for p in _CONTENT_QUESTION_PHRASES)
 
 
 # ── Pacing helper ─────────────────────────────────────────────────────────────
@@ -173,7 +190,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user["state"] not in (State.GREETING, State.EXIT):
         await _type_and_send(
             context.bot, chat_id,
-            "hey, you're back 👀 just say something and we'll pick up where we left off",
+            "hey, you're back. just say something",
         )
         return
 
@@ -270,7 +287,7 @@ async def _show_pack_preview(
     # 5. "I've paid" fallback button
     await _type_and_send(
         context.bot, chat_id,
-        "tap below once you're done 👇",
+        "tap the button when you're ready",
         delay=0.8,
         reply_markup=payment_done_keyboard(pack_id),
     )
@@ -352,48 +369,46 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = await chat_reply(text, context={"stage": "warmup"})
         await _type_and_send(context.bot, chat_id, reply)
 
-        # Advance to CURIOSITY when enough engaged turns have happened
+        # Advance toward offer when enough engaged turns have happened
         if turn_count >= _WARMUP_MIN_TURNS and engagement >= 0:
             await db.set_user_state(user_id, State.CURIOSITY)
-            # Curiosity hint after a natural pause
-            await asyncio.sleep(random.uniform(1.5, 2.5))
-            curiosity_msg = await chat_reply(text, context={"stage": "curiosity"})
-            await _type_and_send(context.bot, chat_id, curiosity_msg, delay=1.5)
-            # Immediately follow with soft invite
-            await asyncio.sleep(random.uniform(1.0, 1.8))
-            soft_invite_msg = await chat_reply("", context={"stage": "soft_invite"})
-            await _type_and_send(context.bot, chat_id, soft_invite_msg, delay=1.2)
+            # One single hint — curiosity + soft invite in the same beat, not stacked
+            await asyncio.sleep(random.uniform(1.5, 2.2))
+            invite_msg = await chat_reply(text, context={"stage": "soft_invite"})
+            await _type_and_send(context.bot, chat_id, invite_msg, delay=1.2)
             await db.set_user_state(user_id, State.SOFT_INVITE)
         return
 
-    # ── SOFT_INVITE: gate pack display behind engagement signal ──────────────
+    # ── SOFT_INVITE: show packs only on clear signal, never by default ───────
     if state == State.SOFT_INVITE:
-        # Track how many times we've already done a flirty exchange here
         invite_attempts = context.user_data.get("soft_invite_attempts", 0)
 
-        if _is_affirmative(text):
-            # Clear yes — show packs immediately
+        if _is_affirmative(text) or _is_buying_signal(text):
+            # Clear yes — show packs
             context.user_data.pop("soft_invite_attempts", None)
             await _show_packs(update, context)
 
-        elif _is_negative(text) and invite_attempts == 0:
-            # First clear no — back to warmup, leave door open
+        elif _is_negative(text):
+            # No means no — don't chase, drop back to warmup
             await db.set_rejection_flag(user_id, 1)
             await db.set_user_state(user_id, State.WARMUP)
             context.user_data.pop("soft_invite_attempts", None)
             reply = await chat_reply(text, context={"stage": "rejected"})
             await _type_and_send(context.bot, chat_id, reply)
 
-        elif _is_hesitant(text) and invite_attempts == 0:
-            # First hesitant/ambiguous reply — one flirty exchange, stay in SOFT_INVITE
-            context.user_data["soft_invite_attempts"] = 1
-            reply = await chat_reply(text, context={"stage": "hesitant"})
+        elif invite_attempts >= 2:
+            # She's not chasing. Drop back to warmup naturally — door stays open.
+            context.user_data.pop("soft_invite_attempts", None)
+            await db.set_user_state(user_id, State.WARMUP)
+            reply = await chat_reply(text, context={"stage": "rejected"})
             await _type_and_send(context.bot, chat_id, reply)
 
         else:
-            # Second response (any kind) or second no — show packs, they've been warmed enough
-            context.user_data.pop("soft_invite_attempts", None)
-            await _show_packs(update, context)
+            # Hesitant, chatting, or ambiguous — respond in character, increment counter
+            context.user_data["soft_invite_attempts"] = invite_attempts + 1
+            stage = "hesitant" if _is_hesitant(text) else "post_offer"
+            reply = await chat_reply(text, context={"stage": stage})
+            await _type_and_send(context.bot, chat_id, reply)
 
         return
 
@@ -403,43 +418,45 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _type_and_send(context.bot, chat_id, reply)
         return
 
-    # ── OFFER: user is chatting instead of clicking — apply cooldown logic ───
+    # ── OFFER: user chatting after seeing packs — never auto-repeat buttons ───
     if state == State.OFFER:
         offer_turns = context.user_data.get("offer_turn_count", 0)
 
         if _is_buying_signal(text):
-            # Unambiguous purchase intent — re-show packs now regardless of cooldown
+            # Explicit purchase intent — re-show packs immediately
             context.user_data["offer_turn_count"] = 0
             await _show_packs(update, context)
             return
 
-        # Increment turns-since-last-offer counter
         offer_turns += 1
         context.user_data["offer_turn_count"] = offer_turns
 
-        if offer_turns >= _OFFER_COOLDOWN_TURNS:
-            # Cooldown passed — re-introduce packs naturally, but only if not a hard no
-            if _is_negative(text):
-                # They're drifting away — drop back to warmup, no pressure
-                context.user_data["offer_turn_count"] = 0
-                await db.set_user_state(user_id, State.WARMUP)
-                reply = await chat_reply(text, context={"stage": "rejected"})
-                await _type_and_send(context.bot, chat_id, reply)
-            else:
-                # Re-engage then re-offer: one conversational line, then buttons
-                context.user_data["offer_turn_count"] = 0
-                bridge = await chat_reply(text, context={"stage": "post_offer"})
-                await _type_and_send(context.bot, chat_id, bridge)
-                await asyncio.sleep(random.uniform(1.0, 1.6))
-                await _show_packs(update, context)
-        else:
-            # Still within cooldown — respond conversationally, no buttons
-            if _is_hesitant(text) or _is_negative(text):
-                reply = await chat_reply(text, context={"stage": "objection"})
-            else:
-                reply = await chat_reply(text, context={"stage": "post_offer"})
+        if offer_turns >= _OFFER_MAX_TURNS:
+            # Too long without clicking — drop back to warmup gracefully, no pressure
+            context.user_data["offer_turn_count"] = 0
+            await db.set_user_state(user_id, State.WARMUP)
+            reply = await chat_reply(text, context={"stage": "rejected"})
             await _type_and_send(context.bot, chat_id, reply)
+            return
 
+        if _is_negative(text):
+            # Hard no — back to warmup, leave door open
+            context.user_data["offer_turn_count"] = 0
+            await db.set_user_state(user_id, State.WARMUP)
+            reply = await chat_reply(text, context={"stage": "rejected"})
+            await _type_and_send(context.bot, chat_id, reply)
+            return
+
+        if offer_turns >= _OFFER_COOLDOWN_TURNS and _is_asking_about_content(text):
+            # User is asking directly about the content after a gap — natural re-offer moment
+            context.user_data["offer_turn_count"] = 0
+            await _show_packs(update, context)
+            return
+
+        # Default: respond conversationally — no buttons, no re-offer push
+        stage = "objection" if _is_hesitant(text) else "post_offer"
+        reply = await chat_reply(text, context={"stage": stage})
+        await _type_and_send(context.bot, chat_id, reply)
         return
 
     # ── PAYMENT_PENDING: reassure, don't spam ─────────────────────────────────

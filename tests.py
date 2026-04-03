@@ -293,9 +293,10 @@ class TestEngagementScoring:
         assert not _is_buying_signal("just looking")
 
     def test_offer_cooldown_constant(self):
-        from handlers import _OFFER_COOLDOWN_TURNS
-        # Must require at least 2 turns before re-showing packs
-        assert _OFFER_COOLDOWN_TURNS >= 2
+        from handlers import _OFFER_COOLDOWN_TURNS, _OFFER_MAX_TURNS
+        # Cooldown must be substantial — no eager re-offers
+        assert _OFFER_COOLDOWN_TURNS >= 4
+        assert _OFFER_MAX_TURNS > _OFFER_COOLDOWN_TURNS
 
     def test_buying_signal_beats_hesitant(self):
         from handlers import _is_buying_signal, _is_hesitant
@@ -303,6 +304,31 @@ class TestEngagementScoring:
         for phrase in ["how do i buy", "i'll take it", "send it"]:
             assert _is_buying_signal(phrase)
             assert not _is_hesitant(phrase)
+
+    def test_content_question_detection(self):
+        from handlers import _is_asking_about_content
+        assert _is_asking_about_content("what's in the vip pack")
+        assert _is_asking_about_content("what do i get")
+        assert _is_asking_about_content("what's the difference")
+        assert _is_asking_about_content("tell me more about pack b")
+        assert _is_asking_about_content("which one should i get")
+        # Generic chat should not trigger
+        assert not _is_asking_about_content("that sounds cool")
+        assert not _is_asking_about_content("haha okay")
+        assert not _is_asking_about_content("how are you")
+
+    def test_greeting_fallbacks_have_no_emoji(self):
+        from llm import _GREETING_FALLBACKS
+        emoji_ranges = range(0x1F300, 0x1FAFF)
+        for line in _GREETING_FALLBACKS:
+            for ch in line:
+                assert ord(ch) not in emoji_ranges, f"Emoji found in greeting: {line!r}"
+
+    def test_warmup_fallbacks_no_eager_lines(self):
+        from llm import _WARMUP_FALLBACKS
+        eager = ["tell me more", "go on", "haha okay go on"]
+        for line in _WARMUP_FALLBACKS:
+            assert line not in eager, f"Eager line found in warmup pool: {line!r}"
 
     def test_new_llm_stages_have_fallbacks(self):
         """post_offer and objection stages must have fallback copy."""
