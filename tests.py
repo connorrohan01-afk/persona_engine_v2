@@ -280,6 +280,46 @@ class TestEngagementScoring:
             for b in banned:
                 assert b not in line.lower(), f"Banned opener '{b}' found in: {line}"
 
+    def test_buying_signal_detection(self):
+        from handlers import _is_buying_signal
+        assert _is_buying_signal("how do i buy this")
+        assert _is_buying_signal("i'll take it")
+        assert _is_buying_signal("how do i pay")
+        assert _is_buying_signal("i want to buy")
+        assert _is_buying_signal("send it")
+        # Negated / ambiguous should NOT trigger
+        assert not _is_buying_signal("not buying this")
+        assert not _is_buying_signal("maybe later")
+        assert not _is_buying_signal("just looking")
+
+    def test_offer_cooldown_constant(self):
+        from handlers import _OFFER_COOLDOWN_TURNS
+        # Must require at least 2 turns before re-showing packs
+        assert _OFFER_COOLDOWN_TURNS >= 2
+
+    def test_buying_signal_beats_hesitant(self):
+        from handlers import _is_buying_signal, _is_hesitant
+        # Buying signals should not be classified as hesitant
+        for phrase in ["how do i buy", "i'll take it", "send it"]:
+            assert _is_buying_signal(phrase)
+            assert not _is_hesitant(phrase)
+
+    def test_new_llm_stages_have_fallbacks(self):
+        """post_offer and objection stages must have fallback copy."""
+        import os
+        os.environ.setdefault("OPENAI_API_KEY", "")
+        # Import after env is set so _get_client() returns None
+        import importlib
+        import llm as llm_module
+        # Call synchronously via the fallback path (no API key)
+        import asyncio
+        async def _check():
+            r1 = await llm_module.chat_reply("hmm", context={"stage": "post_offer"})
+            r2 = await llm_module.chat_reply("not worth it", context={"stage": "objection"})
+            assert isinstance(r1, str) and len(r1) > 0
+            assert isinstance(r2, str) and len(r2) > 0
+        asyncio.get_event_loop().run_until_complete(_check())
+
 
 # ── Config / Packs ────────────────────────────────────────────────────────────
 

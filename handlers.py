@@ -54,6 +54,26 @@ _HESITANT_PHRASES = [
 # Minimum warmup turns before triggering curiosity
 _WARMUP_MIN_TURNS = 3
 
+# Turns in OFFER state required before re-showing pack buttons
+_OFFER_COOLDOWN_TURNS = 3
+
+# Phrases that signal real purchase intent (stronger than affirmative)
+_BUYING_SIGNAL_PHRASES = [
+    "how do i buy", "how do i get", "how do i pay",
+    "i'll take", "i'll get", "i want to buy", "i want to get",
+    "take the", "want to pay", "sign me up", "send it", "link me",
+]
+
+
+def _is_buying_signal(text: str) -> bool:
+    """Strong purchase intent — 'how do I buy', 'I'll take it', etc."""
+    text_lower = text.lower()
+    words = set(text_lower.split())
+    # Unambiguous purchase words (exclude if negated)
+    if words & {"buy", "purchase", "paying"} and "not" not in words and "don't" not in words:
+        return True
+    return any(p in text_lower for p in _BUYING_SIGNAL_PHRASES)
+
 
 # ── Pacing helper ─────────────────────────────────────────────────────────────
 
@@ -196,6 +216,7 @@ async def _show_packs(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await db.set_user_state(user_id, State.OFFER)
     await db.set_last_offer_time(user_id)
+    context.user_data["offer_turn_count"] = 0  # reset cooldown on every pack display
 
     intro = await persona_message("offer_intro")
     await _type_and_send(context.bot, chat_id, intro, reply_markup=packs_keyboard())
@@ -382,19 +403,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _type_and_send(context.bot, chat_id, reply)
         return
 
-    # ── OFFER: user typed instead of tapping a button ────────────────────────
+    # ── OFFER: user is chatting instead of clicking — apply cooldown logic ───
     if state == State.OFFER:
-        if _is_affirmative(text):
-            # Re-show pack buttons
-            intro = await persona_message("offer_intro")
-            await _type_and_send(context.bot, chat_id, intro, reply_markup=packs_keyboard())
+        offer_turns = context.user_data.get("offer_turn_count", 0)
+
+        if _is_buying_signal(text):
+            # Unambiguous purchase intent — re-show packs now regardless of cooldown
+            context.user_data["offer_turn_count"] = 0
+            await _show_packs(update, context)
+            return
+
+        # Increment turns-since-last-offer counter
+        offer_turns += 1
+        context.user_data["offer_turn_count"] = offer_turns
+
+        if offer_turns >= _OFFER_COOLDOWN_TURNS:
+            # Cooldown passed — re-introduce packs naturally, but only if not a hard no
+            if _is_negative(text):
+                # They're drifting away — drop back to warmup, no pressure
+                context.user_data["offer_turn_count"] = 0
+                await db.set_user_state(user_id, State.WARMUP)
+                reply = await chat_reply(text, context={"stage": "rejected"})
+                await _type_and_send(context.bot, chat_id, reply)
+            else:
+                # Re-engage then re-offer: one conversational line, then buttons
+                context.user_data["offer_turn_count"] = 0
+                bridge = await chat_reply(text, context={"stage": "post_offer"})
+                await _type_and_send(context.bot, chat_id, bridge)
+                await asyncio.sleep(random.uniform(1.0, 1.6))
+                await _show_packs(update, context)
         else:
-            reply = await chat_reply(text, context={"stage": "warmup"})
-            await _type_and_send(
-                context.bot, chat_id, reply,
-                delay=1.2,
-                reply_markup=packs_keyboard(),
-            )
+            # Still within cooldown — respond conversationally, no buttons
+            if _is_hesitant(text) or _is_negative(text):
+                reply = await chat_reply(text, context={"stage": "objection"})
+            else:
+                reply = await chat_reply(text, context={"stage": "post_offer"})
+            await _type_and_send(context.bot, chat_id, reply)
+
         return
 
     # ── PAYMENT_PENDING: reassure, don't spam ─────────────────────────────────
@@ -406,21 +451,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ── UPSELL: light touch ───────────────────────────────────────────────────
+    # ── UPSELL: light touch — no repeated keyboard ────────────────────────────
     if state == State.UPSELL:
-        if _is_affirmative(text):
+        if _is_affirmative(text) or _is_buying_signal(text):
             await _show_packs(update, context)
         elif _is_negative(text):
             await db.set_user_state(user_id, State.EXIT)
             exit_msg = await persona_message("exit")
             await _type_and_send(context.bot, chat_id, exit_msg)
         else:
+            # Conversational reply only — keyboard was already shown at delivery
             reply = await chat_reply(text, context={"stage": "upsell"})
-            await _type_and_send(
-                context.bot, chat_id, reply,
-                delay=1.2,
-                reply_markup=upsell_keyboard(),
-            )
+            await _type_and_send(context.bot, chat_id, reply)
         return
 
     # ── EXIT / fallback: never go silent ─────────────────────────────────────
