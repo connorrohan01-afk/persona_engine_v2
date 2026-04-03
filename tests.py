@@ -11,10 +11,10 @@ import json
 import os
 
 # ── Set required env vars before importing app modules ────────────────────────
-os.environ.setdefault("BOT_TOKEN", "1234567890:AAFakeTokenForTesting")
+os.environ.setdefault("TELEGRAM_BOT_TOKEN", "1234567890:AAFakeTokenForTesting")
 os.environ.setdefault("ADMIN_USER_ID", "999")
 os.environ.setdefault("STRIPE_WEBHOOK_SECRET", "")
-os.environ.setdefault("ANTHROPIC_API_KEY", "")
+os.environ.setdefault("OPENAI_API_KEY", "")
 
 import pytest
 import aiosqlite
@@ -46,9 +46,15 @@ pytestmark = pytest.mark.asyncio
 
 class TestStateMachine:
     def test_valid_transitions(self):
+        # Full new funnel path
         assert can_transition(State.GREETING, State.WARMUP)
-        assert can_transition(State.WARMUP, State.OFFER)
-        assert can_transition(State.OFFER, State.PAYMENT_PENDING)
+        assert can_transition(State.WARMUP, State.WARMUP)       # stays in warmup during chat
+        assert can_transition(State.WARMUP, State.CURIOSITY)
+        assert can_transition(State.CURIOSITY, State.SOFT_INVITE)
+        assert can_transition(State.SOFT_INVITE, State.OFFER)
+        assert can_transition(State.SOFT_INVITE, State.WARMUP)  # rejection loops back
+        assert can_transition(State.OFFER, State.PREVIEW)
+        assert can_transition(State.PREVIEW, State.PAYMENT_PENDING)
         assert can_transition(State.PAYMENT_PENDING, State.DELIVERY)
         assert can_transition(State.DELIVERY, State.UPSELL)
         assert can_transition(State.UPSELL, State.OFFER)
@@ -59,10 +65,18 @@ class TestStateMachine:
         assert not can_transition(State.DELIVERY, State.GREETING)
         assert not can_transition(State.EXIT, State.GREETING)
         assert not can_transition(State.PAYMENT_PENDING, State.UPSELL)
+        assert not can_transition(State.WARMUP, State.OFFER)       # must go via CURIOSITY now
+        assert not can_transition(State.WARMUP, State.PAYMENT_PENDING)
+        assert not can_transition(State.SOFT_INVITE, State.PREVIEW)
 
     def test_unknown_state(self):
         assert not can_transition("BOGUS", State.WARMUP)
         assert not can_transition(State.WARMUP, "BOGUS")
+
+    def test_new_states_exist(self):
+        assert State.CURIOSITY == "CURIOSITY"
+        assert State.SOFT_INVITE == "SOFT_INVITE"
+        assert State.PREVIEW == "PREVIEW"
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -148,6 +162,87 @@ class TestDatabase:
         assert stats["total_users"] >= 2
         assert stats["total_purchases"] >= 1
         assert stats["revenue_cents"] >= 1900
+
+
+# ── Engagement tracking ───────────────────────────────────────────────────────
+
+class TestEngagement:
+    async def test_increment_turn_count(self):
+        await db.init_db()
+        await db.upsert_user(501, "turner")
+        assert await db.increment_turn_count(501) == 1
+        assert await db.increment_turn_count(501) == 2
+        assert await db.increment_turn_count(501) == 3
+
+    async def test_update_engagement_score(self):
+        await db.init_db()
+        await db.upsert_user(502, "engager")
+        score = await db.update_engagement_score(502, 1)
+        assert score == 1
+        score = await db.update_engagement_score(502, 1)
+        assert score == 2
+        score = await db.update_engagement_score(502, -1)
+        assert score == 1
+
+    async def test_set_rejection_flag(self):
+        await db.init_db()
+        await db.upsert_user(503, "rejector")
+        user = await db.get_user(503)
+        assert user["rejection_flag"] == 0
+        await db.set_rejection_flag(503, 1)
+        user = await db.get_user(503)
+        assert user["rejection_flag"] == 1
+
+    async def test_set_last_offer_time(self):
+        await db.init_db()
+        await db.upsert_user(504, "shopper")
+        user = await db.get_user(504)
+        assert user["last_offer_time"] is None
+        await db.set_last_offer_time(504)
+        user = await db.get_user(504)
+        assert user["last_offer_time"] is not None
+
+    async def test_new_columns_present(self):
+        await db.init_db()
+        await db.upsert_user(505, "coltest")
+        user = await db.get_user(505)
+        assert "turn_count" in user
+        assert "engagement_score" in user
+        assert "rejection_flag" in user
+        assert "last_offer_time" in user
+
+
+# ── Engagement scoring helpers ────────────────────────────────────────────────
+
+class TestEngagementScoring:
+    def test_positive_score(self):
+        from handlers import _score_message
+        assert _score_message("yeah sounds cool") == 1
+        assert _score_message("omg yes please") == 1
+
+    def test_negative_score(self):
+        from handlers import _score_message
+        assert _score_message("no thanks bye") == -1
+
+    def test_neutral_score(self):
+        from handlers import _score_message
+        # A short message with no keywords
+        assert _score_message("k") == 0
+
+    def test_affirmative_detection(self):
+        from handlers import _is_affirmative
+        assert _is_affirmative("yeah sure")
+        assert _is_affirmative("show me")
+        assert _is_affirmative("go ahead")
+        assert _is_affirmative("ok")
+        assert not _is_affirmative("nope")
+        assert not _is_affirmative("maybe later")
+
+    def test_negative_detection(self):
+        from handlers import _is_negative
+        assert _is_negative("no thanks")
+        assert _is_negative("nah")
+        assert not _is_negative("yeah definitely")
 
 
 # ── Config / Packs ────────────────────────────────────────────────────────────

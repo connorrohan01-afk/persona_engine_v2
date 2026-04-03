@@ -10,14 +10,29 @@ async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                user_id     INTEGER PRIMARY KEY,
-                username    TEXT,
-                state       TEXT    DEFAULT 'GREETING',
-                banned      INTEGER DEFAULT 0,
-                created_at  TEXT    DEFAULT (datetime('now')),
-                updated_at  TEXT    DEFAULT (datetime('now'))
+                user_id          INTEGER PRIMARY KEY,
+                username         TEXT,
+                state            TEXT    DEFAULT 'GREETING',
+                banned           INTEGER DEFAULT 0,
+                turn_count       INTEGER DEFAULT 0,
+                engagement_score INTEGER DEFAULT 0,
+                rejection_flag   INTEGER DEFAULT 0,
+                last_offer_time  TEXT,
+                created_at       TEXT    DEFAULT (datetime('now')),
+                updated_at       TEXT    DEFAULT (datetime('now'))
             )
         """)
+        # Migrate existing DBs — ignore errors if columns already exist
+        for col_def in [
+            "ALTER TABLE users ADD COLUMN turn_count INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN engagement_score INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN rejection_flag INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN last_offer_time TEXT",
+        ]:
+            try:
+                await db.execute(col_def)
+            except Exception:
+                pass
         await db.execute("""
             CREATE TABLE IF NOT EXISTS purchases (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,6 +94,50 @@ async def ban_user(user_id: int):
 async def is_banned(user_id: int) -> bool:
     user = await get_user(user_id)
     return bool(user and user["banned"])
+
+
+# ── Engagement tracking ───────────────────────────────────────────────────────
+
+async def increment_turn_count(user_id: int) -> int:
+    """Increment and return the new turn count."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE users SET turn_count = turn_count + 1, updated_at = datetime('now')
+            WHERE user_id = ?
+        """, (user_id,))
+        await db.commit()
+    user = await get_user(user_id)
+    return user["turn_count"] if user else 0
+
+
+async def update_engagement_score(user_id: int, delta: int) -> int:
+    """Add delta to engagement_score and return new value."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE users SET engagement_score = engagement_score + ?, updated_at = datetime('now')
+            WHERE user_id = ?
+        """, (delta, user_id))
+        await db.commit()
+    user = await get_user(user_id)
+    return user["engagement_score"] if user else 0
+
+
+async def set_rejection_flag(user_id: int, value: int = 1):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE users SET rejection_flag = ?, updated_at = datetime('now')
+            WHERE user_id = ?
+        """, (value, user_id))
+        await db.commit()
+
+
+async def set_last_offer_time(user_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE users SET last_offer_time = datetime('now'), updated_at = datetime('now')
+            WHERE user_id = ?
+        """, (user_id,))
+        await db.commit()
 
 
 # ── Purchases ─────────────────────────────────────────────────────────────────

@@ -1,34 +1,96 @@
 """
-Core conversation handlers — state machine driven, no LLM control.
+Conversation handlers — state machine driven, LLM for tone only.
+
+Flow: GREETING → WARMUP (3-5 turns) → CURIOSITY → SOFT_INVITE → OFFER → PREVIEW → PAYMENT_PENDING → DELIVERY → UPSELL
 """
 
+import asyncio
 import logging
+import random
 
 from telegram import Update
+from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
 import db
-from config import PACKS, PERSONA_NAME
+from config import PACKS
 from delivery import deliver_pack, send_sample_images
 from keyboards import (
-    main_menu_keyboard,
     pack_detail_keyboard,
     packs_keyboard,
     payment_done_keyboard,
     upsell_keyboard,
 )
-from llm import persona_message
+from llm import chat_reply, persona_message
 from states import State
 
 logger = logging.getLogger(__name__)
 
+# Words that signal positive engagement / interest
+_POSITIVE = {
+    "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "please",
+    "show", "go", "tell", "more", "nice", "wow", "cool", "love",
+    "omg", "lol", "haha", "hehe", "interested", "want", "do it",
+    "lets", "let's", "great", "amazing", "awesome", "sounds", "good",
+}
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# Words that signal disinterest or rejection
+_NEGATIVE = {
+    "no", "nope", "nah", "stop", "leave", "bye", "goodbye", "block",
+    "boring", "whatever", "not", "quit", "exit", "unsubscribe",
+}
 
-async def _get_or_create_user(update: Update) -> dict:
-    u = update.effective_user
-    return await db.upsert_user(u.id, u.username)
+# Minimum warmup turns before triggering curiosity
+_WARMUP_MIN_TURNS = 3
 
+
+# ── Pacing helper ─────────────────────────────────────────────────────────────
+
+async def _type_and_send(
+    bot,
+    chat_id: int,
+    text: str,
+    delay: float | None = None,
+    **kwargs,
+):
+    """Show typing indicator, pause, then send message."""
+    await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    await asyncio.sleep(delay if delay is not None else random.uniform(1.2, 2.0))
+    return await bot.send_message(chat_id=chat_id, text=text, **kwargs)
+
+
+# ── Engagement helpers ────────────────────────────────────────────────────────
+
+def _score_message(text: str) -> int:
+    """Return +1 (positive), -1 (negative), or 0 (neutral) for a user message."""
+    words = set(text.lower().split())
+    if words & _POSITIVE:
+        return 1
+    if words & _NEGATIVE:
+        return -1
+    # Short replies often signal engagement too
+    if len(text.strip()) > 2:
+        return 1
+    return 0
+
+
+def _is_affirmative(text: str) -> bool:
+    """Return True if the message is a clear yes/go-ahead."""
+    text_lower = text.lower().strip()
+    words = set(text_lower.split())
+    direct = bool(words & {"yes", "yeah", "yep", "yup", "sure", "ok", "okay",
+                            "please", "go", "show", "do", "lets", "let's"})
+    phrase = any(p in text_lower for p in ["show me", "go ahead", "of course",
+                                            "let's go", "lets go", "why not"])
+    return direct or phrase
+
+
+def _is_negative(text: str) -> bool:
+    words = set(text.lower().split())
+    return bool(words & {"no", "nope", "nah", "not", "stop", "bye", "quit"})
+
+
+# ── Guard / user helper ───────────────────────────────────────────────────────
 
 async def _guard(update: Update) -> bool:
     """Return True (and reply) if user is banned."""
@@ -40,6 +102,11 @@ async def _guard(update: Update) -> bool:
     return False
 
 
+async def _get_or_create_user(update: Update) -> dict:
+    u = update.effective_user
+    return await db.upsert_user(u.id, u.username)
+
+
 # ── /start ────────────────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -47,24 +114,21 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = await _get_or_create_user(update)
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
 
-    # Allow restart from EXIT or GREETING; otherwise resume current state
+    # Resume if mid-funnel
     if user["state"] not in (State.GREETING, State.EXIT):
-        await update.message.reply_text(
-            f"Welcome back! Use the menu below to continue.",
-            reply_markup=main_menu_keyboard(),
+        await _type_and_send(
+            context.bot, chat_id,
+            "hey, you're back 👀 just say something and we'll pick up where we left off",
         )
         return
 
-    await db.set_user_state(update.effective_user.id, State.WARMUP)
+    # Fresh start — one greeting, no keyboards, no packs, wait for reply
+    await db.set_user_state(user_id, State.WARMUP)
     greeting = await persona_message("greeting")
-    warmup = await persona_message("warmup")
-
-    await update.message.reply_text(
-        f"*Hi, I'm {PERSONA_NAME}!* 👋\n\n{greeting}\n\n{warmup}",
-        parse_mode="Markdown",
-        reply_markup=main_menu_keyboard(),
-    )
+    await _type_and_send(context.bot, chat_id, greeting)
 
 
 # ── Callback query dispatcher ─────────────────────────────────────────────────
@@ -82,7 +146,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _show_packs(update, context)
     elif data.startswith("pack_"):
         pack_id = data[len("pack_"):]
-        await _show_pack_detail(update, context, pack_id)
+        await _show_pack_preview(update, context, pack_id)
     elif data.startswith("paid_"):
         pack_id = data[len("paid_"):]
         await _handle_paid_claim(update, context, pack_id)
@@ -92,55 +156,57 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning("Unknown callback_data: %s", data)
 
 
-# ── View packs ────────────────────────────────────────────────────────────────
+# ── Offer / packs ─────────────────────────────────────────────────────────────
 
 async def _show_packs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    user = await db.get_user(user_id)
+    chat_id = update.effective_chat.id
 
-    if user and user["state"] in (State.GREETING, State.WARMUP):
-        await db.set_user_state(user_id, State.OFFER)
+    await db.set_user_state(user_id, State.OFFER)
+    await db.set_last_offer_time(user_id)
 
-    offer_text = await persona_message("offer")
-    await update.effective_message.reply_text(
-        f"{offer_text}\n\n*Choose a pack:*",
-        parse_mode="Markdown",
-        reply_markup=packs_keyboard(),
-    )
+    intro = await persona_message("offer_intro")
+    await _type_and_send(context.bot, chat_id, intro, reply_markup=packs_keyboard())
 
 
-# ── Pack detail ───────────────────────────────────────────────────────────────
+# ── Pack preview (PREVIEW state) ──────────────────────────────────────────────
 
-async def _show_pack_detail(
+async def _show_pack_preview(
     update: Update, context: ContextTypes.DEFAULT_TYPE, pack_id: str
 ):
     if pack_id not in PACKS:
-        await update.effective_message.reply_text("Pack not found.")
+        await update.effective_message.reply_text("hmm, can't find that one")
         return
 
     user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
     pack = PACKS[pack_id]
 
-    # Send sample images (best-effort)
-    await send_sample_images(context.bot, user_id, pack_id)
+    await db.set_user_state(user_id, State.PREVIEW)
 
-    payment_text = await persona_message("payment")
-    detail_text = (
-        f"{pack['emoji']} *{pack['name']}* — ${pack['price_usd']}\n\n"
+    # 1. Send preview images (best-effort, no crash if missing)
+    await send_sample_images(context.bot, chat_id, pack_id)
+
+    # 2. Teasing message
+    preview_text = await persona_message("preview")
+    await _type_and_send(context.bot, chat_id, preview_text, delay=1.0)
+
+    # 3. Pack detail + buy button
+    payment_line = await persona_message("payment")
+    detail = (
+        f"{pack['emoji']} {pack['name']} — ${pack['price_usd']}\n\n"
         f"{pack['description']}\n\n"
-        f"{payment_text}\n\n"
-        f"After completing payment, tap the button below 👇"
+        f"{payment_line}"
     )
-    await update.effective_message.reply_text(
-        detail_text,
-        parse_mode="Markdown",
+    await _type_and_send(
+        context.bot, chat_id, detail,
+        delay=1.2,
         reply_markup=pack_detail_keyboard(pack_id),
     )
 
-    # Record pending purchase when user views the pack detail
+    # 4. Transition to PAYMENT_PENDING and record pending purchase
     await db.set_user_state(user_id, State.PAYMENT_PENDING)
-    existing = await db.get_undelivered_purchase(user_id, pack_id)
-    if not existing:
+    if not await db.get_undelivered_purchase(user_id, pack_id):
         await db.create_purchase(
             user_id=user_id,
             pack_id=pack_id,
@@ -148,10 +214,11 @@ async def _show_pack_detail(
             amount_cents=pack["amount_cents"],
         )
 
-    # Show "I've paid" button in a follow-up (Stripe webhook is primary path)
-    await context.bot.send_message(
-        chat_id=user_id,
-        text="Tap below once your payment is complete:",
+    # 5. "I've paid" fallback button
+    await _type_and_send(
+        context.bot, chat_id,
+        "tap below once you're done 👇",
+        delay=0.8,
         reply_markup=payment_done_keyboard(pack_id),
     )
 
@@ -161,25 +228,21 @@ async def _show_pack_detail(
 async def _handle_paid_claim(
     update: Update, context: ContextTypes.DEFAULT_TYPE, pack_id: str
 ):
-    """
-    User taps "I've paid".  Stripe webhook is the authoritative path.
-    This is a fallback for when webhooks are delayed — it checks DB for
-    an undelivered purchase and delivers if one exists (webhook may have
-    already created it).  If no purchase exists, prompt to complete payment.
-    """
     user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
 
     if await db.has_been_delivered(user_id, pack_id):
-        await update.effective_message.reply_text(
-            "✅ You already have this pack! Check your previous messages."
+        await _type_and_send(
+            context.bot, chat_id,
+            "you already have this one! scroll up 👆"
         )
         return
 
     purchase = await db.get_undelivered_purchase(user_id, pack_id)
     if not purchase:
-        await update.effective_message.reply_text(
-            "We haven't received your payment yet. Please complete the payment via the link above, "
-            "then tap this button again."
+        await _type_and_send(
+            context.bot, chat_id,
+            "i haven't seen your payment come through yet — try again in a sec or use the link above"
         )
         return
 
@@ -188,15 +251,20 @@ async def _handle_paid_claim(
 
     if success:
         await db.set_user_state(user_id, State.UPSELL)
-        upsell_text = await persona_message("upsell")
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=upsell_text,
+        delivery_msg = await persona_message("delivery")
+        await _type_and_send(context.bot, chat_id, delivery_msg, delay=1.0)
+        # Light upsell — wait a beat so it doesn't feel instant
+        await asyncio.sleep(2.5)
+        upsell_msg = await chat_reply("", context={"stage": "upsell"})
+        await _type_and_send(
+            context.bot, chat_id, upsell_msg,
+            delay=1.5,
             reply_markup=upsell_keyboard(),
         )
     else:
-        await update.effective_message.reply_text(
-            "There was an issue sending your content. Please contact support or try again shortly."
+        await _type_and_send(
+            context.bot, chat_id,
+            "something went wrong on my end — drop me a message and i'll sort it"
         )
 
 
@@ -204,19 +272,112 @@ async def _handle_paid_claim(
 
 async def _handle_exit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
     await db.set_user_state(user_id, State.EXIT)
-    exit_text = await persona_message("exit")
-    await update.effective_message.reply_text(exit_text)
+    exit_msg = await persona_message("exit")
+    await _type_and_send(context.bot, chat_id, exit_msg)
 
 
-# ── Fallback for plain text messages ─────────────────────────────────────────
+# ── Main message handler ──────────────────────────────────────────────────────
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await _guard(update):
         return
-    await _get_or_create_user(update)
-    # Nudge the user back into the flow
-    await update.message.reply_text(
-        "Use the menu to browse packs 👇",
-        reply_markup=main_menu_keyboard(),
-    )
+
+    user = await _get_or_create_user(update)
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    text = update.message.text or ""
+    state = user["state"]
+
+    # ── WARMUP: engage naturally, track turns, advance when ready ────────────
+    if state in (State.GREETING, State.WARMUP):
+        turn_count = await db.increment_turn_count(user_id)
+        score_delta = _score_message(text)
+        engagement = await db.update_engagement_score(user_id, score_delta)
+
+        reply = await chat_reply(text, context={"stage": "warmup"})
+        await _type_and_send(context.bot, chat_id, reply)
+
+        # Advance to CURIOSITY when enough engaged turns have happened
+        if turn_count >= _WARMUP_MIN_TURNS and engagement >= 0:
+            await db.set_user_state(user_id, State.CURIOSITY)
+            # Curiosity hint after a natural pause
+            await asyncio.sleep(random.uniform(1.5, 2.5))
+            curiosity_msg = await chat_reply(text, context={"stage": "curiosity"})
+            await _type_and_send(context.bot, chat_id, curiosity_msg, delay=1.5)
+            # Immediately follow with soft invite
+            await asyncio.sleep(random.uniform(1.0, 1.8))
+            soft_invite_msg = await chat_reply("", context={"stage": "soft_invite"})
+            await _type_and_send(context.bot, chat_id, soft_invite_msg, delay=1.2)
+            await db.set_user_state(user_id, State.SOFT_INVITE)
+        return
+
+    # ── SOFT_INVITE: yes → show packs, no → loop back to warmup ──────────────
+    if state == State.SOFT_INVITE:
+        if _is_affirmative(text):
+            await _show_packs(update, context)
+        elif _is_negative(text):
+            await db.set_rejection_flag(user_id, 1)
+            await db.set_user_state(user_id, State.WARMUP)
+            reply = await chat_reply(text, context={"stage": "rejected"})
+            await _type_and_send(context.bot, chat_id, reply)
+        else:
+            # Ambiguous — gentle nudge, stay in SOFT_INVITE
+            await _type_and_send(
+                context.bot, chat_id,
+                "haha is that a yes? 👀",
+                delay=1.2,
+            )
+        return
+
+    # ── CURIOSITY: shouldn't normally receive a text here, treat like WARMUP ─
+    if state == State.CURIOSITY:
+        reply = await chat_reply(text, context={"stage": "warmup"})
+        await _type_and_send(context.bot, chat_id, reply)
+        return
+
+    # ── OFFER: user typed instead of tapping a button ────────────────────────
+    if state == State.OFFER:
+        if _is_affirmative(text):
+            # Re-show pack buttons
+            intro = await persona_message("offer_intro")
+            await _type_and_send(context.bot, chat_id, intro, reply_markup=packs_keyboard())
+        else:
+            reply = await chat_reply(text, context={"stage": "warmup"})
+            await _type_and_send(
+                context.bot, chat_id, reply,
+                delay=1.2,
+                reply_markup=packs_keyboard(),
+            )
+        return
+
+    # ── PAYMENT_PENDING: reassure, don't spam ─────────────────────────────────
+    if state == State.PAYMENT_PENDING:
+        await _type_and_send(
+            context.bot, chat_id,
+            "just use the link above to pay and then hit that button — i'll send everything over right away",
+            delay=1.0,
+        )
+        return
+
+    # ── UPSELL: light touch ───────────────────────────────────────────────────
+    if state == State.UPSELL:
+        if _is_affirmative(text):
+            await _show_packs(update, context)
+        elif _is_negative(text):
+            await db.set_user_state(user_id, State.EXIT)
+            exit_msg = await persona_message("exit")
+            await _type_and_send(context.bot, chat_id, exit_msg)
+        else:
+            reply = await chat_reply(text, context={"stage": "upsell"})
+            await _type_and_send(
+                context.bot, chat_id, reply,
+                delay=1.2,
+                reply_markup=upsell_keyboard(),
+            )
+        return
+
+    # ── EXIT / fallback: never go silent ─────────────────────────────────────
+    reply = await chat_reply(text, context={"stage": "warmup"})
+    await _type_and_send(context.bot, chat_id, reply)
