@@ -61,6 +61,8 @@ _OFFER_COOLDOWN_TURNS = 5
 _OFFER_MAX_TURNS = 10
 # Min turns between consecutive soft-invite / pack-intro moments
 _PACK_INTRO_COOLDOWN = 4
+# Minimum turns before vault fires for a HIGH intent user (bypasses stage gate)
+_HIGH_INTENT_MIN_TURNS = 2
 
 # 6-stage escalation model — offer only unlocks after partial_reveal
 # Stage 1 HOOK:          light tease, playful tension, no selling
@@ -177,26 +179,38 @@ def has_buying_signal(text: str) -> bool:
     return any(p in text_lower for p in _BUYING_CURIOSITY_PHRASES)
 
 
-def _maybe_advance_stage(user_data: dict, intent: str, signal: bool) -> str:
+def _maybe_advance_stage(
+    user_data: dict, intent: str, signal: bool, intent_level: str = "low"
+) -> str:
     """
-    Evaluate whether to advance conversation_stage through the 6-stage escalation model.
-    - Engaged turns accumulate toward each stage's threshold before advancing.
-    - A buying/curiosity signal fast-tracks deeper into the funnel.
-    - Dry and exit turns do not advance the stage.
-    Returns the current (possibly advanced) stage.
+    Advance conversation_stage through the 6-stage escalation model.
+
+    HIGH intent  — pushes directly to tease/partial_reveal immediately.
+    MID intent   — advances at half the normal per-stage threshold.
+    Signal       — fast-tracks past early stages.
+    Dry/exit     — holds the current stage.
     """
     stage = user_data.get("conversation_stage", "hook")
 
-    # Migrate legacy stage names from sessions started before the 6-stage model
     if stage in _STAGE_MIGRATION:
         stage = _STAGE_MIGRATION[stage]
         user_data["conversation_stage"] = stage
 
-    # Terminal/post stages are set externally — don't advance here
     if stage not in _STAGE_ORDER:
         return stage
 
-    # Buying/curiosity signal fast-tracks — skip early fluff stages
+    # HIGH intent: jump past slow-build stages immediately
+    if intent_level == "high":
+        if stage in ("hook", "intrigue", "micro_reward", "tension_build"):
+            user_data["conversation_stage"] = "tease"
+            user_data["stage_turn_count"] = 0
+            return "tease"
+        if stage == "tease":
+            user_data["conversation_stage"] = "partial_reveal"
+            user_data["stage_turn_count"] = 0
+            return "partial_reveal"
+
+    # Buying/curiosity signal fast-tracks
     if signal:
         if stage in ("hook", "intrigue", "micro_reward"):
             user_data["conversation_stage"] = "tease"
@@ -207,16 +221,17 @@ def _maybe_advance_stage(user_data: dict, intent: str, signal: bool) -> str:
             user_data["stage_turn_count"] = 0
             return "partial_reveal"
 
-    # Dry and exit turns hold the stage — no progression
     if intent in ("exit", "dry"):
         return stage
 
-    # Count this as an engaged turn
     stage_turns = user_data.get("stage_turn_count", 0) + 1
     user_data["stage_turn_count"] = stage_turns
 
-    # Advance if threshold met and a next stage exists
+    # MID intent: advance at half the threshold — engaged users don't wait as long
     threshold = _STAGE_THRESHOLDS.get(stage, 999)
+    if intent_level == "mid":
+        threshold = max(1, threshold // 2)
+
     if stage_turns >= threshold:
         try:
             idx = _STAGE_ORDER.index(stage)
@@ -326,6 +341,39 @@ def _is_dry(text: str) -> bool:
     )
 
 
+# ── Intent level classification ───────────────────────────────────────────────
+
+_HIGH_INTENT_PHRASES = [
+    "what is it", "what's in it", "how much", "what does it cost",
+    "worth it", "is it worth", "i want", "want to see",
+    "what do i get", "what do you have", "tell me more",
+    "what's included", "more info", "how do i get",
+    "i'm interested", "interested in", "i want more", "show me more",
+    "what pack", "what's the difference", "show me", "let me see",
+    "what are you hiding", "what's behind", "what don't i see",
+]
+
+
+def _classify_intent_level(text: str, intent: str, signal: bool) -> str:
+    """
+    LOW  — passive, short, dry, unresponsive
+    MID  — engaged, asking questions, playing along
+    HIGH — signalling desire, asking price, expressing want, curiosity about content
+    Drives vault timing and stage acceleration.
+    """
+    text_lower = text.lower()
+    if signal or any(p in text_lower for p in _HIGH_INTENT_PHRASES):
+        return "high"
+    if intent in ("exit", "dry"):
+        return "low"
+    words = text.strip().split()
+    if len(words) >= 4 or "?" in text or intent in ("normal", "objection"):
+        return "mid"
+    if len(words) >= 2 and intent == "normal":
+        return "mid"
+    return "low"
+
+
 _MEETUP_WORDS = {"meet", "meetup", "irl"}
 _MEETUP_PHRASES = [
     "come over", "where are you", "where you at", "link up", "can i see you",
@@ -374,7 +422,7 @@ def detect_intent(text: str, last_message: str | None = None) -> str:
 
 
 def _track_response(user_data: dict, category: str, line: str) -> None:
-    """Record a sent response in session memory for anti-repetition tracking."""
+    """Record a sent response in session memory for anti-repetition and stall tracking."""
     user_data["last_response_category"] = category
 
     recent_cats = user_data.get("recent_categories", [])
@@ -384,6 +432,18 @@ def _track_response(user_data: dict, category: str, line: str) -> None:
     recent_lines_used = user_data.get("recent_lines", [])
     recent_lines_used.append(line)
     user_data["recent_lines"] = recent_lines_used[-2:]
+
+    # Stall counter — resets on any escalating category, increments on low-energy ones
+    _low_energy = {"dry", "challenge", "redirect", "repeat"}
+    if category in _low_energy:
+        user_data["stall_count"] = user_data.get("stall_count", 0) + 1
+    else:
+        user_data["stall_count"] = 0
+
+
+def _is_stalling(user_data: dict) -> bool:
+    """Two consecutive low-energy responses without escalation → stalling."""
+    return user_data.get("stall_count", 0) >= 2
 
 
 # ── Guard / user helper ───────────────────────────────────────────────────────
@@ -650,37 +710,68 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         signal = has_buying_signal(text)
         strong = _is_strong_buy_signal(text)
-        stage = _maybe_advance_stage(context.user_data, intent, signal)
+        intent_level = _classify_intent_level(text, intent, signal)
+        stage = _maybe_advance_stage(context.user_data, intent, signal, intent_level)
+
+        # Track intent escalation — reward users who lean in
+        prev_intent_level = context.user_data.get("last_intent_level", "low")
+        context.user_data["last_intent_level"] = intent_level
+        intent_escalated = (
+            (prev_intent_level == "low" and intent_level in ("mid", "high"))
+            or (prev_intent_level == "mid" and intent_level == "high")
+        )
 
         last_offer_turn = context.user_data.get("last_offer_turn", -_PACK_INTRO_COOLDOWN)
-        cooldown_ok = (turn_count - last_offer_turn) >= _PACK_INTRO_COOLDOWN
+        # High-intent users aren't held at a long cooldown — act when they're ready
+        cooldown_threshold = 2 if intent_level == "high" else _PACK_INTRO_COOLDOWN
+        cooldown_ok = (turn_count - last_offer_turn) >= cooldown_threshold
 
-        # ── 4-step vault: buy signal detected + min turns met ────────────────
-        # Strong signal → immediate vault. Normal signal → requires partial_reveal stage.
+        # ── Vault decision ────────────────────────────────────────────────────
+        # HIGH intent: vault after _HIGH_INTENT_MIN_TURNS (2) regardless of stage
+        # Strong buy signal: vault after normal min turns
+        # Natural progression: vault when stage reaches partial_reveal
         vault_now = (
-            cooldown_ok and turn_count >= _WARMUP_MIN_TURNS and engagement >= 0
-            and (strong or stage == "partial_reveal")
+            engagement >= 0
+            and cooldown_ok
+            and (
+                (intent_level == "high" and turn_count >= _HIGH_INTENT_MIN_TURNS)
+                or (strong and turn_count >= _WARMUP_MIN_TURNS)
+                or stage == "partial_reveal"
+            )
         )
         if vault_now:
-            # Steps 1-3: framing line (recognition + withhold + frame)
             context.user_data["conversation_stage"] = "partial_reveal"
             recent = context.user_data.get("recent_lines", [])
             framing = pick_line("reward", recent)
             _track_response(context.user_data, "reward", framing)
             await _type_and_send(context.bot, chat_id, framing)
-            # Step 4: vault
             await asyncio.sleep(random.uniform(1.2, 2.0))
             await _show_packs(update, context)
             return
 
         # ── Normal response ───────────────────────────────────────────────────
         recent = context.user_data.get("recent_lines", [])
+
+        # Stall override — two consecutive low-energy replies means we're looping
+        if _is_stalling(context.user_data) and intent not in ("exit", "dry"):
+            force_cat = "curiosity" if stage in ("tease", "partial_reveal") else "tension"
+            reply = pick_line(force_cat, recent)
+            _track_response(context.user_data, force_cat, reply)
+            await _type_and_send(context.bot, chat_id, reply)
+            return
+
         if intent == "dry":
             reply = pick_line("dry", recent)
             _track_response(context.user_data, "dry", reply)
         elif intent == "objection":
-            reply = pick_line("challenge", recent)
-            _track_response(context.user_data, "challenge", reply)
+            # High-intent hesitation: use curiosity pull, not pushback
+            cat = "curiosity" if intent_level == "high" else "challenge"
+            reply = pick_line(cat, recent)
+            _track_response(context.user_data, cat, reply)
+        elif intent_escalated:
+            # User leaned in — reward the investment with selective attention
+            reply = pick_line("pull", recent)
+            _track_response(context.user_data, "pull", reply)
         else:
             cat = _stage_to_category(stage)
             reply = pick_line(cat, recent)
@@ -716,7 +807,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Hesitant, chatting, or ambiguous — respond in character, increment counter
             context.user_data["soft_invite_attempts"] = invite_attempts + 1
             signal = has_buying_signal(text)
-            stage = _maybe_advance_stage(context.user_data, intent, signal)
+            intent_level = _classify_intent_level(text, intent, signal)
+            stage = _maybe_advance_stage(context.user_data, intent, signal, intent_level)
             recent = context.user_data.get("recent_lines", [])
             if intent == "objection":
                 reply = pick_line("objection", recent)
@@ -732,17 +824,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # ── CURIOSITY: shouldn't normally receive a text here, treat like WARMUP ─
+    # ── CURIOSITY: treat like WARMUP with intent awareness ───────────────────
     if state == State.CURIOSITY:
         signal = has_buying_signal(text)
-        stage = _maybe_advance_stage(context.user_data, intent, signal)
+        strong = _is_strong_buy_signal(text)
+        intent_level = _classify_intent_level(text, intent, signal)
+        stage = _maybe_advance_stage(context.user_data, intent, signal, intent_level)
+        turn_count = context.user_data.get("current_turn", 0)
+        last_offer_turn = context.user_data.get("last_offer_turn", -_PACK_INTRO_COOLDOWN)
+        cooldown_threshold = 2 if intent_level == "high" else _PACK_INTRO_COOLDOWN
+        cooldown_ok = (turn_count - last_offer_turn) >= cooldown_threshold
+        if cooldown_ok and (intent_level == "high" or strong or stage == "partial_reveal"):
+            recent = context.user_data.get("recent_lines", [])
+            framing = pick_line("reward", recent)
+            _track_response(context.user_data, "reward", framing)
+            await _type_and_send(context.bot, chat_id, framing)
+            await asyncio.sleep(random.uniform(1.2, 2.0))
+            await _show_packs(update, context)
+            return
         recent = context.user_data.get("recent_lines", [])
         if intent == "dry":
             reply = pick_line("dry", recent)
             _track_response(context.user_data, "dry", reply)
         elif intent == "objection":
-            reply = pick_line("challenge", recent)
-            _track_response(context.user_data, "challenge", reply)
+            cat = "curiosity" if intent_level == "high" else "challenge"
+            reply = pick_line(cat, recent)
+            _track_response(context.user_data, cat, reply)
         else:
             cat = _stage_to_category(stage)
             reply = pick_line(cat, recent)
