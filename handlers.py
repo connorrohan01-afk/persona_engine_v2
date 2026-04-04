@@ -22,6 +22,7 @@ from keyboards import (
     upsell_keyboard,
 )
 from llm import chat_reply, persona_message
+from response_library import pick_line
 from states import State
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,60 @@ _WARMUP_MIN_TURNS = 3
 _OFFER_COOLDOWN_TURNS = 5
 # Max turns in OFFER without a click before dropping back to warmup
 _OFFER_MAX_TURNS = 10
+# Min turns between consecutive soft-invite / pack-intro moments
+_PACK_INTRO_COOLDOWN = 4
+
+# 6-stage escalation model — offer only unlocks after partial_reveal
+# Stage 1 HOOK:          light tease, playful tension, no selling
+# Stage 2 INTRIGUE:      imply they're different, make them feel selected
+# Stage 3 MICRO_REWARD:  small emotional payoff, slight warmth shift
+# Stage 4 TENSION_BUILD: pull back, make them want more
+# Stage 5 TEASE:         hint at what exists without explaining
+# Stage 6 PARTIAL_REVEAL: close to unlocking — THEN introduce vault
+_STAGE_ORDER = ["hook", "intrigue", "micro_reward", "tension_build", "tease", "partial_reveal"]
+
+# Minimum engaged turns per stage before advancing
+_STAGE_THRESHOLDS: dict[str, int] = {
+    "hook":          1,
+    "intrigue":      2,
+    "micro_reward":  2,
+    "tension_build": 2,
+    "tease":         2,
+    # partial_reveal: no threshold — terminal pre-offer stage
+}
+
+# Maps conversation stage → response library category for normal (non-intent) turns
+_STAGE_TO_CATEGORY: dict[str, str] = {
+    "hook":          "tension",    # Stage 1: light tease, establish intrigue
+    "intrigue":      "pull",       # Stage 2: selective attention, feel chosen
+    "micro_reward":  "pull",       # Stage 3: slight warmth, small payoff
+    "tension_build": "tension",    # Stage 4: pull back, increase want
+    "tease":         "curiosity",  # Stage 5: hint at what exists
+    "partial_reveal": "reward",    # Stage 6: close to unlocking
+    "post_offer":    "pull",       # hold interest, no spam
+    "post_purchase": "pull",
+}
+
+# Migrate any legacy stage names (from sessions started before the 6-stage model)
+_STAGE_MIGRATION: dict[str, str] = {
+    "warmup":       "intrigue",
+    "tension":      "tension_build",
+    "curiosity":    "tease",
+    "reveal_ready": "partial_reveal",
+}
+
+
+def _stage_to_category(stage: str) -> str:
+    return _STAGE_TO_CATEGORY.get(stage, "tension")
+
+# Phrases signalling curiosity about content — used for stage fast-tracking
+_BUYING_CURIOSITY_PHRASES = [
+    "what's in", "what is in", "what do i get", "what's included",
+    "tell me more", "what kind", "what does it", "see more",
+    "what do you have", "what is it", "more info", "can i see",
+    "worth it", "how much", "is it worth", "what pack",
+    "what's the difference", "show me what",
+]
 
 # Phrases that signal real purchase intent (stronger than affirmative)
 _BUYING_SIGNAL_PHRASES = [
@@ -90,6 +145,71 @@ def _is_asking_about_content(text: str) -> bool:
     """User is directly asking about the packs or content — a natural re-offer moment."""
     text_lower = text.lower()
     return any(p in text_lower for p in _CONTENT_QUESTION_PHRASES)
+
+
+def has_buying_signal(text: str) -> bool:
+    """
+    Broader curiosity/interest signal for stage fast-tracking.
+    Includes direct purchase intent AND content curiosity questions.
+    """
+    if _is_buying_signal(text):
+        return True
+    text_lower = text.lower()
+    return any(p in text_lower for p in _BUYING_CURIOSITY_PHRASES)
+
+
+def _maybe_advance_stage(user_data: dict, intent: str, signal: bool) -> str:
+    """
+    Evaluate whether to advance conversation_stage through the 6-stage escalation model.
+    - Engaged turns accumulate toward each stage's threshold before advancing.
+    - A buying/curiosity signal fast-tracks deeper into the funnel.
+    - Dry and exit turns do not advance the stage.
+    Returns the current (possibly advanced) stage.
+    """
+    stage = user_data.get("conversation_stage", "hook")
+
+    # Migrate legacy stage names from sessions started before the 6-stage model
+    if stage in _STAGE_MIGRATION:
+        stage = _STAGE_MIGRATION[stage]
+        user_data["conversation_stage"] = stage
+
+    # Terminal/post stages are set externally — don't advance here
+    if stage not in _STAGE_ORDER:
+        return stage
+
+    # Buying/curiosity signal fast-tracks — skip early fluff stages
+    if signal:
+        if stage in ("hook", "intrigue", "micro_reward"):
+            user_data["conversation_stage"] = "tease"
+            user_data["stage_turn_count"] = 0
+            return "tease"
+        if stage in ("tension_build", "tease"):
+            user_data["conversation_stage"] = "partial_reveal"
+            user_data["stage_turn_count"] = 0
+            return "partial_reveal"
+
+    # Dry and exit turns hold the stage — no progression
+    if intent in ("exit", "dry"):
+        return stage
+
+    # Count this as an engaged turn
+    stage_turns = user_data.get("stage_turn_count", 0) + 1
+    user_data["stage_turn_count"] = stage_turns
+
+    # Advance if threshold met and a next stage exists
+    threshold = _STAGE_THRESHOLDS.get(stage, 999)
+    if stage_turns >= threshold:
+        try:
+            idx = _STAGE_ORDER.index(stage)
+        except ValueError:
+            return stage
+        if idx + 1 < len(_STAGE_ORDER):
+            new_stage = _STAGE_ORDER[idx + 1]
+            user_data["conversation_stage"] = new_stage
+            user_data["stage_turn_count"] = 0
+            return new_stage
+
+    return stage
 
 
 # ── Pacing helper ─────────────────────────────────────────────────────────────
@@ -159,6 +279,94 @@ def _is_hesitant(text: str) -> bool:
     return any(p in text_lower for p in _HESITANT_PHRASES)
 
 
+_EXIT_WORDS = {"bye", "goodbye", "cya"}
+_EXIT_PHRASES = ["ok bye", "okay bye", "gotta go", "have to go", "see ya", "ttyl", "gtg", "talk later"]
+
+
+def _is_exit_attempt(text: str) -> bool:
+    """Soft exit signal — 'bye', 'ok bye', 'gotta go'. Distinct from content rejection."""
+    text_lower = text.lower().strip()
+    words = set(text_lower.split())
+    if words & _EXIT_WORDS:
+        return True
+    return any(p in text_lower for p in _EXIT_PHRASES)
+
+
+def _is_dry(text: str) -> bool:
+    """One- to three-word low-effort reply that isn't a clear signal of any kind."""
+    words = text.strip().split()
+    if len(words) > 3:
+        return False
+    # Don't classify a meaningful short signal as dry
+    return not (
+        _is_affirmative(text)
+        or _is_negative(text)
+        or _is_buying_signal(text)
+        or _is_hesitant(text)
+        or _is_exit_attempt(text)
+    )
+
+
+_MEETUP_WORDS = {"meet", "meetup", "irl"}
+_MEETUP_PHRASES = [
+    "come over", "where are you", "where you at", "link up", "can i see you",
+    "are you near", "where do you live", "in person", "real life", "your location",
+]
+
+_OBJECTION_PHRASES = [
+    "not worth it", "too expensive", "not sure if", "don't think so",
+    "idk if it", "is it worth", "not for me", "not interested",
+]
+
+
+def detect_intent(text: str, last_message: str | None = None) -> str:
+    """
+    Classify a user message into a routing intent.
+    Determines whether to use a library response or fall through to LLM.
+    """
+    text_lower = text.lower().strip()
+    words = set(text_lower.split())
+
+    # Meetup — always redirect, never reject directly
+    if words & _MEETUP_WORDS or any(p in text_lower for p in _MEETUP_PHRASES):
+        return "meetup"
+
+    # Repeat — same text as their previous message
+    if last_message and text_lower == last_message.lower().strip():
+        return "repeat_test"
+
+    # Exit — soft disengagement
+    if _is_exit_attempt(text):
+        return "exit"
+
+    # Objection — hesitation or explicit doubt about value
+    if _is_hesitant(text) or any(p in text_lower for p in _OBJECTION_PHRASES):
+        return "objection"
+
+    # Dry — low-effort, low-word-count reply
+    if _is_dry(text):
+        return "dry"
+
+    return "normal"
+
+
+# ── Response memory helpers ──────────────────────────────────────────────────
+
+
+
+def _track_response(user_data: dict, category: str, line: str) -> None:
+    """Record a sent response in session memory for anti-repetition tracking."""
+    user_data["last_response_category"] = category
+
+    recent_cats = user_data.get("recent_categories", [])
+    recent_cats.append(category)
+    user_data["recent_categories"] = recent_cats[-3:]
+
+    recent_lines_used = user_data.get("recent_lines", [])
+    recent_lines_used.append(line)
+    user_data["recent_lines"] = recent_lines_used[-2:]
+
+
 # ── Guard / user helper ───────────────────────────────────────────────────────
 
 async def _guard(update: Update) -> bool:
@@ -196,6 +404,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Fresh start — one greeting, no keyboards, no packs, wait for reply
     await db.set_user_state(user_id, State.WARMUP)
+    context.user_data["conversation_stage"] = "hook"
+    context.user_data["stage_turn_count"] = 0
     greeting = await persona_message("greeting")
     await _type_and_send(context.bot, chat_id, greeting)
 
@@ -233,7 +443,10 @@ async def _show_packs(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await db.set_user_state(user_id, State.OFFER)
     await db.set_last_offer_time(user_id)
-    context.user_data["offer_turn_count"] = 0  # reset cooldown on every pack display
+    context.user_data["offer_turn_count"] = 0
+    context.user_data["last_offer_turn"] = context.user_data.get("current_turn", 0)
+    context.user_data["conversation_stage"] = "post_offer"
+    context.user_data["stage_turn_count"] = 0
 
     intro = await persona_message("offer_intro")
     await _type_and_send(context.bot, chat_id, intro, reply_markup=packs_keyboard())
@@ -321,6 +534,8 @@ async def _handle_paid_claim(
 
     if success:
         await db.set_user_state(user_id, State.UPSELL)
+        context.user_data["conversation_stage"] = "post_purchase"
+        context.user_data["stage_turn_count"] = 0
         delivery_msg = await persona_message("delivery")
         await _type_and_send(context.bot, chat_id, delivery_msg, delay=1.0)
         # Light upsell — wait a beat so it doesn't feel instant
@@ -360,17 +575,74 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text or ""
     state = user["state"]
 
+    # ── Intent classification ─────────────────────────────────────────────────
+    last_message = context.user_data.get("last_message")
+    intent = detect_intent(text, last_message)
+    context.user_data["last_message"] = text
+
+    # ── Meetup redirect — intercept before all state routing ─────────────────
+    if intent == "meetup":
+        reply = pick_line("redirect", context.user_data.get("recent_lines", []))
+        _track_response(context.user_data, "redirect", reply)
+        await _type_and_send(context.bot, chat_id, reply)
+        return
+
+    # ── Repeat test — call out the loop ──────────────────────────────────────
+    if intent == "repeat_test":
+        reply = pick_line("repeat", context.user_data.get("recent_lines", []))
+        _track_response(context.user_data, "repeat", reply)
+        await _type_and_send(context.bot, chat_id, reply)
+        return
+
+    # ── Exit interception: one re-engagement attempt before allowing exit ─────
+    if intent == "exit" and state not in (State.EXIT, State.PAYMENT_PENDING):
+        exit_count = context.user_data.get("exit_attempts", 0)
+        if exit_count == 0:
+            context.user_data["exit_attempts"] = 1
+            reply = pick_line("retention", context.user_data.get("recent_lines", []))
+            _track_response(context.user_data, "retention", reply)
+            await _type_and_send(context.bot, chat_id, reply)
+            return
+        # Second exit attempt — let them go
+        context.user_data.pop("exit_attempts", None)
+        await db.set_user_state(user_id, State.EXIT)
+        exit_msg = await persona_message("exit")
+        await _type_and_send(context.bot, chat_id, exit_msg)
+        return
+
+    # Any non-exit message resets the exit attempt counter
+    context.user_data.pop("exit_attempts", None)
+
     # ── WARMUP: engage naturally, track turns, advance when ready ────────────
     if state in (State.GREETING, State.WARMUP):
         turn_count = await db.increment_turn_count(user_id)
+        context.user_data["current_turn"] = turn_count
         score_delta = _score_message(text)
         engagement = await db.update_engagement_score(user_id, score_delta)
 
-        reply = await chat_reply(text, context={"stage": "warmup"})
+        # Advance conversation stage (may fast-track on buying signal)
+        signal = has_buying_signal(text)
+        stage = _maybe_advance_stage(context.user_data, intent, signal)
+
+        recent = context.user_data.get("recent_lines", [])
+        if intent == "dry":
+            reply = pick_line("dry", recent)
+            _track_response(context.user_data, "dry", reply)
+        elif intent == "objection":
+            reply = pick_line("challenge", recent)
+            _track_response(context.user_data, "challenge", reply)
+        else:
+            cat = _stage_to_category(stage)
+            reply = pick_line(cat, recent)
+            _track_response(context.user_data, cat, reply)
         await _type_and_send(context.bot, chat_id, reply)
 
-        # Advance toward offer when enough engaged turns have happened
-        if turn_count >= _WARMUP_MIN_TURNS and engagement >= 0:
+        # Advance toward offer — requires minimum turns, positive engagement,
+        # pack-intro cooldown, AND conversation stage reaching curiosity or reveal_ready
+        last_offer_turn = context.user_data.get("last_offer_turn", -_PACK_INTRO_COOLDOWN)
+        cooldown_ok = (turn_count - last_offer_turn) >= _PACK_INTRO_COOLDOWN
+        stage_ready = stage == "partial_reveal"  # all 6 stages must complete before offer
+        if turn_count >= _WARMUP_MIN_TURNS and engagement >= 0 and cooldown_ok and stage_ready:
             await db.set_user_state(user_id, State.CURIOSITY)
             # One single hint — curiosity + soft invite in the same beat, not stacked
             await asyncio.sleep(random.uniform(1.5, 2.2))
@@ -406,15 +678,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             # Hesitant, chatting, or ambiguous — respond in character, increment counter
             context.user_data["soft_invite_attempts"] = invite_attempts + 1
-            stage = "hesitant" if _is_hesitant(text) else "post_offer"
-            reply = await chat_reply(text, context={"stage": stage})
+            signal = has_buying_signal(text)
+            stage = _maybe_advance_stage(context.user_data, intent, signal)
+            recent = context.user_data.get("recent_lines", [])
+            if intent == "objection":
+                reply = pick_line("objection", recent)
+                _track_response(context.user_data, "objection", reply)
+            elif intent == "dry":
+                reply = pick_line("dry", recent)
+                _track_response(context.user_data, "dry", reply)
+            else:
+                cat = _stage_to_category(stage)
+                reply = pick_line(cat, recent)
+                _track_response(context.user_data, cat, reply)
             await _type_and_send(context.bot, chat_id, reply)
 
         return
 
     # ── CURIOSITY: shouldn't normally receive a text here, treat like WARMUP ─
     if state == State.CURIOSITY:
-        reply = await chat_reply(text, context={"stage": "warmup"})
+        signal = has_buying_signal(text)
+        stage = _maybe_advance_stage(context.user_data, intent, signal)
+        recent = context.user_data.get("recent_lines", [])
+        if intent == "dry":
+            reply = pick_line("dry", recent)
+            _track_response(context.user_data, "dry", reply)
+        elif intent == "objection":
+            reply = pick_line("challenge", recent)
+            _track_response(context.user_data, "challenge", reply)
+        else:
+            cat = _stage_to_category(stage)
+            reply = pick_line(cat, recent)
+            _track_response(context.user_data, cat, reply)
         await _type_and_send(context.bot, chat_id, reply)
         return
 
@@ -454,8 +749,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # Default: respond conversationally — no buttons, no re-offer push
-        stage = "objection" if _is_hesitant(text) else "post_offer"
-        reply = await chat_reply(text, context={"stage": stage})
+        stage = context.user_data.get("conversation_stage", "post_offer")
+        recent = context.user_data.get("recent_lines", [])
+        if intent == "objection":
+            reply = pick_line("challenge", recent)
+            _track_response(context.user_data, "challenge", reply)
+        elif intent == "dry":
+            reply = pick_line("dry", recent)
+            _track_response(context.user_data, "dry", reply)
+        else:
+            cat = _stage_to_category(stage)
+            reply = pick_line(cat, recent)
+            _track_response(context.user_data, cat, reply)
         await _type_and_send(context.bot, chat_id, reply)
         return
 

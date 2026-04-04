@@ -8,7 +8,11 @@
       "Bash(git add:*)",
       "Bash(git rm:*)",
       "Bash(git commit:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(TELEGRAM_BOT_TOKEN=fake ADMIN_USER_ID=999 python3 -c \"import handlers\" 2>&1)",
+      "Bash(TELEGRAM_BOT_TOKEN=fake ADMIN_USER_ID=999 python3 -c \"import main\" 2>&1)",
+      "Bash(grep:*)",
+      "Bash(pip3 show:*)"
     ]
   }
 }
