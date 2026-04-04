@@ -112,6 +112,10 @@ _BUYING_CURIOSITY_PHRASES = [
     "what do you have", "what is it", "more info", "can i see",
     "worth it", "how much", "is it worth", "what pack",
     "what's the difference", "show me what",
+    # buy-signal additions
+    "i want more", "want more", "show me more", "i'm curious",
+    "you haven't shown", "haven't shown me", "what else",
+    "been holding back", "what are you hiding", "what don't i know",
 ]
 
 # Phrases that signal real purchase intent (stronger than affirmative)
@@ -119,6 +123,13 @@ _BUYING_SIGNAL_PHRASES = [
     "how do i buy", "how do i get", "how do i pay",
     "i'll take", "i'll get", "i want to buy", "i want to get",
     "take the", "want to pay", "sign me up", "send it", "link me",
+]
+
+# Phrases that signal clear, explicit intent — trigger immediate vault approach
+_STRONG_BUY_PHRASES = [
+    "i want more", "show me everything", "i want to see",
+    "take my money", "just show me", "let me in",
+    "i'm interested", "i want access", "where do i sign",
 ]
 
 
@@ -130,6 +141,14 @@ def _is_buying_signal(text: str) -> bool:
     if words & {"buy", "purchase", "paying"} and "not" not in words and "don't" not in words:
         return True
     return any(p in text_lower for p in _BUYING_SIGNAL_PHRASES)
+
+
+def _is_strong_buy_signal(text: str) -> bool:
+    """Explicit, unambiguous interest — triggers immediate 4-step vault approach."""
+    text_lower = text.lower()
+    if _is_buying_signal(text_lower):
+        return True
+    return any(p in text_lower for p in _STRONG_BUY_PHRASES)
 
 
 # Phrases that indicate the user is asking about the content specifically
@@ -599,9 +618,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         exit_count = context.user_data.get("exit_attempts", 0)
         if exit_count == 0:
             context.user_data["exit_attempts"] = 1
-            reply = pick_line("retention", context.user_data.get("recent_lines", []))
+            recent = context.user_data.get("recent_lines", [])
+            reply = pick_line("retention", recent)
             _track_response(context.user_data, "retention", reply)
             await _type_and_send(context.bot, chat_id, reply)
+            # If user was deep in the funnel, add a vault hint after the retention line
+            current_stage = context.user_data.get("conversation_stage", "hook")
+            if current_stage in ("tease", "partial_reveal"):
+                await asyncio.sleep(random.uniform(2.0, 3.0))
+                recent = context.user_data.get("recent_lines", [])
+                vault_hint = pick_line("curiosity", recent)
+                _track_response(context.user_data, "curiosity", vault_hint)
+                await _type_and_send(context.bot, chat_id, vault_hint, delay=0.8)
             return
         # Second exit attempt — let them go
         context.user_data.pop("exit_attempts", None)
@@ -620,10 +648,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         score_delta = _score_message(text)
         engagement = await db.update_engagement_score(user_id, score_delta)
 
-        # Advance conversation stage (may fast-track on buying signal)
         signal = has_buying_signal(text)
+        strong = _is_strong_buy_signal(text)
         stage = _maybe_advance_stage(context.user_data, intent, signal)
 
+        last_offer_turn = context.user_data.get("last_offer_turn", -_PACK_INTRO_COOLDOWN)
+        cooldown_ok = (turn_count - last_offer_turn) >= _PACK_INTRO_COOLDOWN
+
+        # ── 4-step vault: buy signal detected + min turns met ────────────────
+        # Strong signal → immediate vault. Normal signal → requires partial_reveal stage.
+        vault_now = (
+            cooldown_ok and turn_count >= _WARMUP_MIN_TURNS and engagement >= 0
+            and (strong or stage == "partial_reveal")
+        )
+        if vault_now:
+            # Steps 1-3: framing line (recognition + withhold + frame)
+            context.user_data["conversation_stage"] = "partial_reveal"
+            recent = context.user_data.get("recent_lines", [])
+            framing = pick_line("reward", recent)
+            _track_response(context.user_data, "reward", framing)
+            await _type_and_send(context.bot, chat_id, framing)
+            # Step 4: vault
+            await asyncio.sleep(random.uniform(1.2, 2.0))
+            await _show_packs(update, context)
+            return
+
+        # ── Normal response ───────────────────────────────────────────────────
         recent = context.user_data.get("recent_lines", [])
         if intent == "dry":
             reply = pick_line("dry", recent)
@@ -636,19 +686,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply = pick_line(cat, recent)
             _track_response(context.user_data, cat, reply)
         await _type_and_send(context.bot, chat_id, reply)
-
-        # Advance toward offer — requires minimum turns, positive engagement,
-        # pack-intro cooldown, AND conversation stage reaching curiosity or reveal_ready
-        last_offer_turn = context.user_data.get("last_offer_turn", -_PACK_INTRO_COOLDOWN)
-        cooldown_ok = (turn_count - last_offer_turn) >= _PACK_INTRO_COOLDOWN
-        stage_ready = stage == "partial_reveal"  # all 6 stages must complete before offer
-        if turn_count >= _WARMUP_MIN_TURNS and engagement >= 0 and cooldown_ok and stage_ready:
-            await db.set_user_state(user_id, State.CURIOSITY)
-            # One single hint — curiosity + soft invite in the same beat, not stacked
-            await asyncio.sleep(random.uniform(1.5, 2.2))
-            invite_msg = await chat_reply(text, context={"stage": "soft_invite"})
-            await _type_and_send(context.bot, chat_id, invite_msg, delay=1.2)
-            await db.set_user_state(user_id, State.SOFT_INVITE)
         return
 
     # ── SOFT_INVITE: show packs only on clear signal, never by default ───────

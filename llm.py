@@ -287,13 +287,15 @@ async def chat_reply(user_message: str, context: dict | None = None) -> str:
         ),
         "tease": (
             "Stage: hint that there is more. Do not explain or name it.\n"
-            "Examples: 'what you're seeing here isn't even the part people stay for' / 'there's more to this than what's here'\n"
-            "Leave it open. One line."
+            "Step 1 — acknowledge tension: 'you're starting to get it'\n"
+            "Step 2 — withhold: 'but this isn't where I go all the way with it'\n"
+            "Combine into one natural line. Leave the door open. Do not drop the vault yet."
         ),
         "partial_reveal": (
-            "Stage: near reveal. Frame the vault as a natural next layer — not a product.\n"
-            "Examples: 'what I actually share properly isn't really in here' / 'you've got enough now to see why people go further'\n"
-            "One line."
+            "Stage: near reveal. The vault is the next step — frame it as continuation.\n"
+            "Step 3 — frame: 'what you're looking for isn't really in here'\n"
+            "Make them feel they are one step away from something real.\n"
+            "One line. Calm, not eager."
         ),
         "dry": (
             "User sent very little. Respond from your side — not by narrating theirs.\n"
@@ -312,9 +314,10 @@ async def chat_reply(user_message: str, context: dict | None = None) -> str:
             "Something exists — they have not seen it. Leave it implied. One line."
         ),
         "soft_invite": (
-            "The vault is the natural next step. Frame it as continuation, not a purchase.\n"
-            "Calm, not eager. 'What I actually share properly isn't really in here.'\n"
-            "One line."
+            "The vault is appearing now. Frame it as the natural continuation — not a product, not a sale.\n"
+            "Recognition: they got here. Framing: what they're looking for lives there, not here.\n"
+            "Examples: 'what I actually share properly isn't really in here' / 'you've been here long enough for this'\n"
+            "One line. Calm. Not eager. This is step 3 of 4 — the vault follows immediately."
         ),
         "hesitant": (
             "User is unsure. Do not push or explain.\n"
