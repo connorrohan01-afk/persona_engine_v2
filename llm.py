@@ -384,7 +384,7 @@ def _get_client():
     return _client
 
 
-async def chat_reply(user_message: str, context: dict | None = None) -> str:
+async def chat_reply(user_message: str, context: dict | None = None, history: list | None = None) -> str:
     """
     Respond directly to a user message in character.
     Used during WARMUP, CURIOSITY, SOFT_INVITE, UPSELL, and objection stages.
@@ -542,8 +542,10 @@ async def chat_reply(user_message: str, context: dict | None = None) -> str:
         "Then guide forward. 1 to 2 lines max. No quotation marks."
     )
 
+    history_slice = (history or [])[-8:]
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
+        *history_slice,
         {"role": "user", "content": user_prompt},
     ]
 
@@ -570,6 +572,7 @@ async def chat_reply(user_message: str, context: dict | None = None) -> str:
             )
             messages_retry = [
                 {"role": "system", "content": _SYSTEM_PROMPT},
+                *history_slice,
                 {"role": "user", "content": retry_prompt},
             ]
             retry_response = await _client.chat.completions.create(

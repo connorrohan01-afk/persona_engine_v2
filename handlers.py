@@ -316,6 +316,18 @@ def _is_hesitant(text: str) -> bool:
 _EXIT_WORDS = {"bye", "goodbye", "cya"}
 _EXIT_PHRASES = ["ok bye", "okay bye", "gotta go", "have to go", "see ya", "ttyl", "gtg", "talk later"]
 
+_COMPLIMENT_WORDS = {
+    "beautiful", "gorgeous", "cute", "hot", "amazing", "stunning",
+    "pretty", "attractive", "lovely", "perfect", "sexy",
+}
+_COMPLIMENT_PHRASES = [
+    "you're so", "you look", "love your", "love the way",
+    "you're beautiful", "you're gorgeous", "you're cute", "you're hot",
+    "you're amazing", "you're stunning", "you're perfect", "you're sexy",
+    "that's beautiful", "so pretty", "i like you", "i love you",
+    "you sound", "ur hot", "ur cute", "u r hot",
+]
+
 
 def _is_exit_attempt(text: str) -> bool:
     """Soft exit signal — 'bye', 'ok bye', 'gotta go'. Distinct from content rejection."""
@@ -339,6 +351,15 @@ def _is_dry(text: str) -> bool:
         or _is_hesitant(text)
         or _is_exit_attempt(text)
     )
+
+
+def _is_compliment(text: str) -> bool:
+    """Direct compliment about appearance or personality — treat as positive momentum."""
+    text_lower = text.lower()
+    words = set(text_lower.split())
+    if words & _COMPLIMENT_WORDS:
+        return True
+    return any(p in text_lower for p in _COMPLIMENT_PHRASES)
 
 
 # ── Intent level classification ───────────────────────────────────────────────
@@ -419,6 +440,14 @@ def detect_intent(text: str, last_message: str | None = None) -> str:
 
 # ── Response memory helpers ──────────────────────────────────────────────────
 
+
+
+def _push_history(user_data: dict, user_msg: str, assistant_msg: str) -> None:
+    """Append a turn to the in-session history buffer (capped at 16 messages = 8 turns)."""
+    history = user_data.get("history", [])
+    history.append({"role": "user", "content": user_msg})
+    history.append({"role": "assistant", "content": assistant_msg})
+    user_data["history"] = history[-16:]
 
 
 def _track_response(user_data: dict, category: str, line: str) -> None:
@@ -670,8 +699,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Meetup redirect — intercept before all state routing ─────────────────
     if intent == "meetup":
-        reply = await chat_reply(text, context={"stage": "meetup"})
+        history = context.user_data.get("history", [])
+        reply = await chat_reply(text, context={"stage": "meetup"}, history=history)
         _track_response(context.user_data, "redirect", reply)
+        _push_history(context.user_data, text, reply)
+        # Mark vault path active — next turns stay on vault trajectory, not generic warmup
+        context.user_data["vault_path_active"] = True
+        context.user_data["vault_path_turns"] = 0
         await _type_and_send(context.bot, chat_id, reply)
         return
 
@@ -687,16 +721,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         exit_count = context.user_data.get("exit_attempts", 0)
         if exit_count == 0:
             context.user_data["exit_attempts"] = 1
+            history = context.user_data.get("history", [])
             current_stage = context.user_data.get("conversation_stage", "hook")
             # LLM exit line so it references the specific moment, not a generic library pick
-            reply = await chat_reply(text, context={"stage": "reengagement"})
+            reply = await chat_reply(text, context={"stage": "reengagement"}, history=history)
             _track_response(context.user_data, "retention", reply)
+            _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
             # Deep in the funnel — follow with a contextual vault hint
             if current_stage in ("tease", "partial_reveal"):
                 await asyncio.sleep(random.uniform(2.0, 3.0))
-                vault_hint = await chat_reply(text, context={"stage": "tease"})
+                vault_hint = await chat_reply(text, context={"stage": "tease"}, history=history)
                 _track_response(context.user_data, "curiosity", vault_hint)
+                _push_history(context.user_data, text, vault_hint)
                 await _type_and_send(context.bot, chat_id, vault_hint, delay=0.8)
             return
         # Second exit attempt — let them go
@@ -711,6 +748,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── WARMUP: engage naturally, track turns, advance when ready ────────────
     if state in (State.GREETING, State.WARMUP):
+        history = context.user_data.get("history", [])
         turn_count = await db.increment_turn_count(user_id)
         context.user_data["current_turn"] = turn_count
         score_delta = _score_message(text)
@@ -720,6 +758,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         strong = _is_strong_buy_signal(text)
         intent_level = _classify_intent_level(text, intent, signal)
         stage = _maybe_advance_stage(context.user_data, intent, signal, intent_level)
+
+        # ── Vault path tracking (post-meetup or post-redirect) ────────────────
+        # Keeps stage at tease-minimum and fires vault after 3 engaged turns on path
+        if context.user_data.get("vault_path_active"):
+            vpt = context.user_data.get("vault_path_turns", 0) + 1
+            context.user_data["vault_path_turns"] = vpt
+            if stage in ("hook", "intrigue", "micro_reward"):
+                context.user_data["conversation_stage"] = "tease"
+                stage = "tease"
+            if vpt >= 3:
+                context.user_data.pop("vault_path_active", None)
+                context.user_data["vault_path_turns"] = 0
+                context.user_data["conversation_stage"] = "partial_reveal"
+                await db.set_conversation_stage(user_id, "partial_reveal")
+                framing = await chat_reply(text, context={"stage": "partial_reveal"}, history=history)
+                _track_response(context.user_data, "reward", framing)
+                _push_history(context.user_data, text, framing)
+                await _type_and_send(context.bot, chat_id, framing)
+                await asyncio.sleep(random.uniform(1.2, 2.0))
+                await _show_packs(update, context)
+                return
 
         # Track intent escalation — reward users who lean in
         prev_intent_level = context.user_data.get("last_intent_level", "low")
@@ -751,8 +810,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["conversation_stage"] = "partial_reveal"
             await db.set_conversation_stage(user_id, "partial_reveal")
             # LLM framing so it references the user's specific message — not a generic library drop
-            framing = await chat_reply(text, context={"stage": "partial_reveal"})
+            framing = await chat_reply(text, context={"stage": "partial_reveal"}, history=history)
             _track_response(context.user_data, "reward", framing)
+            _push_history(context.user_data, text, framing)
             await _type_and_send(context.bot, chat_id, framing)
             await asyncio.sleep(random.uniform(1.2, 2.0))
             await _show_packs(update, context)
@@ -761,18 +821,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ── Normal response ───────────────────────────────────────────────────
         recent = context.user_data.get("recent_lines", [])
 
-        # Stall override — two consecutive low-energy replies → force escalation
+        # Stall override — two consecutive low-energy replies → force escalation via LLM
         if _is_stalling(context.user_data) and intent not in ("exit", "dry"):
-            force_stage = "curiosity" if stage in ("tease", "partial_reveal") else stage
-            reply = await chat_reply(text, context={"stage": force_stage})
+            force_stage = "tease" if stage in ("tease", "partial_reveal") else stage
+            reply = await chat_reply(text, context={"stage": force_stage}, history=history)
             _track_response(context.user_data, "tension", reply)
+            _push_history(context.user_data, text, reply)
+            await _type_and_send(context.bot, chat_id, reply)
+            return
+
+        # Compliment — treat as momentum, reward then hold back slightly
+        if _is_compliment(text) and intent not in ("exit",):
+            reply = await chat_reply(text, context={"stage": "micro_reward"}, history=history)
+            _track_response(context.user_data, "pull", reply)
+            _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
             return
 
         if intent == "dry" and "?" not in text:
-            # Dry = low effort with no question: library is fine (generic is intentional here)
-            reply = pick_line("dry", recent)
+            # Dry: LLM with history so it reacts to the specific dynamic, not a canned line
+            reply = await chat_reply(text, context={"stage": "dry"}, history=history)
             _track_response(context.user_data, "dry", reply)
+            _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
         elif (
             intent == "objection"
@@ -786,19 +856,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else "partial_reveal" if intent_escalated and intent_level == "high"
                 else stage
             )
-            reply = await chat_reply(text, context={"stage": llm_stage})
+            reply = await chat_reply(text, context={"stage": llm_stage}, history=history)
             _track_response(context.user_data, llm_stage, reply)
+            _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
         else:
-            # Low intent, no question: library is fast and sufficient
+            # Low intent, no question: library pick
             cat = _stage_to_category(stage)
             reply = pick_line(cat, recent)
             _track_response(context.user_data, cat, reply)
+            _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
         return
 
     # ── SOFT_INVITE: show packs only on clear signal, never by default ───────
     if state == State.SOFT_INVITE:
+        history = context.user_data.get("history", [])
         invite_attempts = context.user_data.get("soft_invite_attempts", 0)
 
         if _is_affirmative(text) or _is_buying_signal(text):
@@ -811,14 +884,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await db.set_rejection_flag(user_id, 1)
             await db.set_user_state(user_id, State.WARMUP)
             context.user_data.pop("soft_invite_attempts", None)
-            reply = await chat_reply(text, context={"stage": "rejected"})
+            reply = await chat_reply(text, context={"stage": "rejected"}, history=history)
+            _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
 
         elif invite_attempts >= 2:
             # She's not chasing. Drop back to warmup naturally — door stays open.
             context.user_data.pop("soft_invite_attempts", None)
             await db.set_user_state(user_id, State.WARMUP)
-            reply = await chat_reply(text, context={"stage": "rejected"})
+            reply = await chat_reply(text, context={"stage": "rejected"}, history=history)
+            _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
 
         else:
@@ -827,21 +902,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             signal = has_buying_signal(text)
             intent_level = _classify_intent_level(text, intent, signal)
             _maybe_advance_stage(context.user_data, intent, signal, intent_level)
-            if intent == "dry" and "?" not in text:
-                recent = context.user_data.get("recent_lines", [])
-                reply = pick_line("dry", recent)
-                _track_response(context.user_data, "dry", reply)
-            else:
-                # LLM so the reply actually addresses their specific objection or question
-                llm_stage = "objection" if intent == "objection" else "partial_reveal"
-                reply = await chat_reply(text, context={"stage": llm_stage})
-                _track_response(context.user_data, llm_stage, reply)
+            llm_stage = "objection" if intent == "objection" else "partial_reveal"
+            reply = await chat_reply(text, context={"stage": llm_stage}, history=history)
+            _track_response(context.user_data, llm_stage, reply)
+            _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
 
         return
 
     # ── CURIOSITY: treat like WARMUP with intent awareness ───────────────────
     if state == State.CURIOSITY:
+        history = context.user_data.get("history", [])
         signal = has_buying_signal(text)
         strong = _is_strong_buy_signal(text)
         intent_level = _classify_intent_level(text, intent, signal)
@@ -851,31 +922,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cooldown_threshold = 2 if intent_level == "high" else _PACK_INTRO_COOLDOWN
         cooldown_ok = (turn_count - last_offer_turn) >= cooldown_threshold
         if cooldown_ok and (intent_level == "high" or strong or stage == "partial_reveal"):
-            recent = context.user_data.get("recent_lines", [])
-            framing = pick_line("reward", recent)
+            # LLM framing so vault pivot references what they just said — not a library drop
+            framing = await chat_reply(text, context={"stage": "partial_reveal"}, history=history)
             _track_response(context.user_data, "reward", framing)
+            _push_history(context.user_data, text, framing)
             await _type_and_send(context.bot, chat_id, framing)
             await asyncio.sleep(random.uniform(1.2, 2.0))
             await _show_packs(update, context)
             return
         if intent == "dry" and "?" not in text:
-            recent = context.user_data.get("recent_lines", [])
-            reply = pick_line("dry", recent)
+            reply = await chat_reply(text, context={"stage": "dry"}, history=history)
             _track_response(context.user_data, "dry", reply)
+            _push_history(context.user_data, text, reply)
         elif intent == "objection" or "?" in text:
             llm_stage = "objection" if intent == "objection" else stage
-            reply = await chat_reply(text, context={"stage": llm_stage})
+            reply = await chat_reply(text, context={"stage": llm_stage}, history=history)
             _track_response(context.user_data, llm_stage, reply)
+            _push_history(context.user_data, text, reply)
         else:
             recent = context.user_data.get("recent_lines", [])
             cat = _stage_to_category(stage)
             reply = pick_line(cat, recent)
             _track_response(context.user_data, cat, reply)
+            _push_history(context.user_data, text, reply)
         await _type_and_send(context.bot, chat_id, reply)
         return
 
     # ── OFFER: user chatting after seeing packs — never auto-repeat buttons ───
     if state == State.OFFER:
+        history = context.user_data.get("history", [])
         offer_turns = context.user_data.get("offer_turn_count", 0)
 
         if _is_buying_signal(text):
@@ -891,7 +966,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Too long without clicking — drop back to warmup gracefully, no pressure
             context.user_data["offer_turn_count"] = 0
             await db.set_user_state(user_id, State.WARMUP)
-            reply = await chat_reply(text, context={"stage": "rejected"})
+            reply = await chat_reply(text, context={"stage": "rejected"}, history=history)
+            _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
             return
 
@@ -899,7 +975,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Hard no — back to warmup, leave door open
             context.user_data["offer_turn_count"] = 0
             await db.set_user_state(user_id, State.WARMUP)
-            reply = await chat_reply(text, context={"stage": "rejected"})
+            reply = await chat_reply(text, context={"stage": "rejected"}, history=history)
+            _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
             return
 
@@ -914,17 +991,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if intent == "objection" or "?" in text:
             # Objections and questions need contextual LLM replies — library picks ignore content
             llm_stage = "objection" if intent == "objection" else stage
-            reply = await chat_reply(text, context={"stage": llm_stage})
+            reply = await chat_reply(text, context={"stage": llm_stage}, history=history)
             _track_response(context.user_data, llm_stage, reply)
+            _push_history(context.user_data, text, reply)
         elif intent == "dry" and "?" not in text:
-            recent = context.user_data.get("recent_lines", [])
-            reply = pick_line("dry", recent)
+            reply = await chat_reply(text, context={"stage": "dry"}, history=history)
             _track_response(context.user_data, "dry", reply)
+            _push_history(context.user_data, text, reply)
         else:
             recent = context.user_data.get("recent_lines", [])
             cat = _stage_to_category(stage)
             reply = pick_line(cat, recent)
             _track_response(context.user_data, cat, reply)
+            _push_history(context.user_data, text, reply)
         await _type_and_send(context.bot, chat_id, reply)
         return
 
@@ -939,6 +1018,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── UPSELL: light touch — no repeated keyboard ────────────────────────────
     if state == State.UPSELL:
+        history = context.user_data.get("history", [])
         if _is_affirmative(text) or _is_buying_signal(text):
             await _show_packs(update, context)
         elif _is_negative(text):
@@ -947,10 +1027,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _type_and_send(context.bot, chat_id, exit_msg)
         else:
             # Conversational reply only — keyboard was already shown at delivery
-            reply = await chat_reply(text, context={"stage": "upsell"})
+            reply = await chat_reply(text, context={"stage": "upsell"}, history=history)
+            _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
         return
 
     # ── EXIT / fallback: never go silent ─────────────────────────────────────
-    reply = await chat_reply(text, context={"stage": "warmup"})
+    history = context.user_data.get("history", [])
+    reply = await chat_reply(text, context={"stage": "warmup"}, history=history)
+    _push_history(context.user_data, text, reply)
     await _type_and_send(context.bot, chat_id, reply)

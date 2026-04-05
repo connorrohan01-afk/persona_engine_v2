@@ -29,6 +29,7 @@ async def init_db():
             "ALTER TABLE users ADD COLUMN rejection_flag INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN last_offer_time TEXT",
             "ALTER TABLE users ADD COLUMN conversation_stage TEXT DEFAULT 'hook'",
+            "ALTER TABLE users ADD COLUMN vault_seen INTEGER DEFAULT 0",
         ]:
             try:
                 await db.execute(col_def)

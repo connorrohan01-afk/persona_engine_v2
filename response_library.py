@@ -208,6 +208,29 @@ soft_redirect_lines = [
 ]
 
 
+compliment_lines = [
+    "lol okay that actually landed. don't read into it",
+    "i wasn't expecting that. keep going",
+    "that's sweet. i'm not going to make it weird",
+    "okay i heard that. moving on",
+    "that got through a little. don't overthink it",
+    "lol noted. you're not getting a whole thing from me about it",
+    "i'll take it. not going to say more than that",
+    "you didn't have to say that but i'm glad you did",
+    "okay. that actually did something. i'm not explaining it",
+    "i appreciate that. still not giving you everything",
+    "that's the kind of thing that keeps me talking to you",
+    "mm. i'll let that one sit",
+    "you said the right thing. i'm just not going to tell you which part",
+    "lol okay. that one counts. barely",
+    "i wasn't going to react to that and then i did",
+    "you're better at this than you're letting on",
+    "that made me softer and i'm annoyed about it",
+    "okay stop. that was good",
+    "i don't usually respond to that but here i am",
+    "that one hit different. not going to analyze it",
+]
+
 LIBRARY_BY_INTENT = {
     # Primary category names — matched to intent taxonomy
     "tension":   flirt_lines,           # push/pull, light challenge (TESTING / hook stage)
@@ -218,6 +241,7 @@ LIBRARY_BY_INTENT = {
     "retention": exit_lines,            # make leaving feel premature (EXITING)
     "redirect":  soft_redirect_lines,   # meetup/escalation redirect (ESCALATING)
     # Utility categories
+    "compliment": compliment_lines,     # earned warmth after a direct compliment
     "dry":       dry_user_lines,        # explicit dry-user pull lines
     "repeat":    loop_breaker_lines,    # loop/repeat detection
 }
