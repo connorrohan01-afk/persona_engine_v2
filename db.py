@@ -28,6 +28,7 @@ async def init_db():
             "ALTER TABLE users ADD COLUMN engagement_score INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN rejection_flag INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN last_offer_time TEXT",
+            "ALTER TABLE users ADD COLUMN conversation_stage TEXT DEFAULT 'hook'",
         ]:
             try:
                 await db.execute(col_def)
@@ -128,6 +129,15 @@ async def set_rejection_flag(user_id: int, value: int = 1):
             UPDATE users SET rejection_flag = ?, updated_at = datetime('now')
             WHERE user_id = ?
         """, (value, user_id))
+        await db.commit()
+
+
+async def set_conversation_stage(user_id: int, stage: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE users SET conversation_stage = ?, updated_at = datetime('now')
+            WHERE user_id = ?
+        """, (stage, user_id))
         await db.commit()
 
 

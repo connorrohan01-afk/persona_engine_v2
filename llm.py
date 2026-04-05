@@ -7,6 +7,7 @@ Returns plain strings that handlers inject into messages.
 import logging
 import os
 import random
+import re
 
 from config import PERSONA_NAME
 
@@ -234,7 +235,7 @@ _GREETING_FALLBACKS = [
 ]
 
 _WARMUP_FALLBACKS = [
-    "lol that's not what i expected — go on",
+    "lol that's not what i expected. go on",
     "actually curious now. keep going",
     "hm. didn't think you'd go there",
     "that's more interesting than i thought",
@@ -293,6 +294,22 @@ _DEAD_OPENERS = (
     "something exists here",
     "something about this",
 )
+
+
+def _sanitize_output(text: str) -> str:
+    """Enforce hard style constraints on every model output.
+
+    - Strips all quotation marks (standard and curly).
+    - Replaces em/en dashes used as sentence punctuation with a space.
+    - Collapses leftover double spaces.
+    """
+    # All quotation variants
+    text = re.sub(r'["\u201c\u201d\u2018\u2019\u201a\u201b]', '', text)
+    # Em dash and en dash used as punctuation (surrounded by optional spaces)
+    text = re.sub(r'\s*[\u2014\u2013]\s*', ' ', text)
+    # Collapse multiple spaces
+    text = re.sub(r' {2,}', ' ', text)
+    return text.strip()
 
 
 def _is_dead_response(text: str) -> bool:
@@ -365,9 +382,12 @@ async def chat_reply(user_message: str, context: dict | None = None) -> str:
                          "take your time",
                          "lol i see you"],
         "objection":    ["depends what kind of person you think i am",
-                         "not for everyone — the ones who get it really get it",
+                         "not for everyone. the ones who get it really get it",
                          "you'd know if you saw it",
                          "fair. most people think that before they look"],
+        "meetup":       ["i'd actually like that. the version of me you'd want to meet comes after this though",
+                         "that's not off the table. it's just not where we are yet",
+                         "you'd have to earn that a little. but you're not far off"],
     }
 
     client = _get_client()
@@ -458,17 +478,26 @@ async def chat_reply(user_message: str, context: dict | None = None) -> str:
         ),
         "objection": (
             "They're pushing back. Don't defend. Redirect toward what they haven't seen yet.\n"
-            "Example: 'you're not sold because you haven't seen it yet'\n"
+            "Example: you're not sold because you haven't seen it yet\n"
             "One line."
+        ),
+        "meetup": (
+            "They asked about your location or suggested meeting up in person.\n"
+            "Show genuine openness first, then introduce a condition naturally.\n"
+            "Never say wrong place or shut it down. Never reject directly.\n"
+            "The condition: that level of access comes after deeper engagement, not before it.\n"
+            "Example: i'd actually like that. the version of me you'd want to meet comes after this though\n"
+            "Example: that's not off the table. it's just not where we are yet\n"
+            "One line. Warm but conditional."
         ),
     }
 
     hint = stage_hints.get(stage, stage_hints["warmup"])
     user_prompt = (
-        f"They just said: \"{user_message}\"\n\n"
+        f"They just said: {user_message}\n\n"
         f"{hint}\n\n"
-        "React to their specific words first — be specific to what they said, not generic. "
-        "Then guide forward. 1–2 lines max."
+        "React to their specific words first, not generically. "
+        "Then guide forward. 1 to 2 lines max. No quotation marks."
     )
 
     messages = [
@@ -486,16 +515,16 @@ async def chat_reply(user_message: str, context: dict | None = None) -> str:
         return response.choices[0].message.content.strip()
 
     try:
-        result = await _call(temperature=0.9)
+        result = _sanitize_output(await _call(temperature=0.9))
 
         if _is_dead_response(result):
             logger.debug("Dead response detected (%r), retrying stage=%s", result, stage)
             retry_prompt = (
                 f"{user_prompt}\n\n"
-                "Your previous reply was flat — it did not move the conversation forward. "
+                "Your previous reply was flat and did not move the conversation forward. "
                 "Rewrite it. Add something new, deepen the tone, or build curiosity. "
                 "Do not describe the user. Do not ask a generic question. Do not end neutrally. "
-                "One line. Make them want to reply."
+                "One line. Make them want to reply. No quotation marks."
             )
             messages_retry = [
                 {"role": "system", "content": _SYSTEM_PROMPT},
@@ -507,7 +536,7 @@ async def chat_reply(user_message: str, context: dict | None = None) -> str:
                 temperature=1.0,
                 messages=messages_retry,
             )
-            result = retry_response.choices[0].message.content.strip()
+            result = _sanitize_output(retry_response.choices[0].message.content.strip())
 
         return result
 
@@ -593,7 +622,7 @@ async def persona_message(stage: str, context: dict | None = None) -> str:
                 {"role": "user", "content": prompt},
             ],
         )
-        return response.choices[0].message.content.strip()
+        return _sanitize_output(response.choices[0].message.content.strip())
     except Exception as exc:
         logger.error("LLM persona_message failed stage=%s: %s", stage, exc)
         pool = fallbacks.get(stage, [""])

@@ -475,6 +475,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Resume if mid-funnel
     if user["state"] not in (State.GREETING, State.EXIT):
+        # Restore conversation progress from DB in case of bot restart
+        context.user_data.setdefault(
+            "conversation_stage", user.get("conversation_stage", "hook")
+        )
+        context.user_data.setdefault("stage_turn_count", 0)
         await _type_and_send(
             context.bot, chat_id,
             "hey, you're back. just say something",
@@ -654,6 +659,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text or ""
     state = user["state"]
 
+    # Restore conversation stage from DB if the session is fresh (e.g. after bot restart)
+    if "conversation_stage" not in context.user_data:
+        context.user_data["conversation_stage"] = user.get("conversation_stage", "hook")
+
     # ── Intent classification ─────────────────────────────────────────────────
     last_message = context.user_data.get("last_message")
     intent = detect_intent(text, last_message)
@@ -661,7 +670,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Meetup redirect — intercept before all state routing ─────────────────
     if intent == "meetup":
-        reply = pick_line("redirect", context.user_data.get("recent_lines", []))
+        reply = await chat_reply(text, context={"stage": "meetup"})
         _track_response(context.user_data, "redirect", reply)
         await _type_and_send(context.bot, chat_id, reply)
         return
@@ -678,16 +687,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         exit_count = context.user_data.get("exit_attempts", 0)
         if exit_count == 0:
             context.user_data["exit_attempts"] = 1
-            recent = context.user_data.get("recent_lines", [])
-            reply = pick_line("retention", recent)
+            current_stage = context.user_data.get("conversation_stage", "hook")
+            # LLM exit line so it references the specific moment, not a generic library pick
+            reply = await chat_reply(text, context={"stage": "reengagement"})
             _track_response(context.user_data, "retention", reply)
             await _type_and_send(context.bot, chat_id, reply)
-            # If user was deep in the funnel, add a vault hint after the retention line
-            current_stage = context.user_data.get("conversation_stage", "hook")
+            # Deep in the funnel — follow with a contextual vault hint
             if current_stage in ("tease", "partial_reveal"):
                 await asyncio.sleep(random.uniform(2.0, 3.0))
-                recent = context.user_data.get("recent_lines", [])
-                vault_hint = pick_line("curiosity", recent)
+                vault_hint = await chat_reply(text, context={"stage": "tease"})
                 _track_response(context.user_data, "curiosity", vault_hint)
                 await _type_and_send(context.bot, chat_id, vault_hint, delay=0.8)
             return
@@ -741,8 +749,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         if vault_now:
             context.user_data["conversation_stage"] = "partial_reveal"
-            recent = context.user_data.get("recent_lines", [])
-            framing = pick_line("reward", recent)
+            await db.set_conversation_stage(user_id, "partial_reveal")
+            # LLM framing so it references the user's specific message — not a generic library drop
+            framing = await chat_reply(text, context={"stage": "partial_reveal"})
             _track_response(context.user_data, "reward", framing)
             await _type_and_send(context.bot, chat_id, framing)
             await asyncio.sleep(random.uniform(1.2, 2.0))
@@ -760,14 +769,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _type_and_send(context.bot, chat_id, reply)
             return
 
-        if intent == "dry":
-            # Dry = low effort: library challenge is fine (generic is intentional here)
+        if intent == "dry" and "?" not in text:
+            # Dry = low effort with no question: library is fine (generic is intentional here)
             reply = pick_line("dry", recent)
             _track_response(context.user_data, "dry", reply)
             await _type_and_send(context.bot, chat_id, reply)
-        elif intent == "objection" or intent_level in ("mid", "high") or intent_escalated:
-            # Mid/high intent and objections need contextual responses — route through LLM
-            # so the reply actually references what the user said
+        elif (
+            intent == "objection"
+            or intent_level in ("mid", "high")
+            or intent_escalated
+            or "?" in text  # Direct questions always need contextual LLM reply
+        ):
+            # Contextual responses — route through LLM so the reply references what they said
             llm_stage = (
                 "objection" if intent == "objection"
                 else "partial_reveal" if intent_escalated and intent_level == "high"
@@ -777,7 +790,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _track_response(context.user_data, llm_stage, reply)
             await _type_and_send(context.bot, chat_id, reply)
         else:
-            # Low intent, normal: library is fast and sufficient
+            # Low intent, no question: library is fast and sufficient
             cat = _stage_to_category(stage)
             reply = pick_line(cat, recent)
             _track_response(context.user_data, cat, reply)
@@ -809,22 +822,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _type_and_send(context.bot, chat_id, reply)
 
         else:
-            # Hesitant, chatting, or ambiguous — respond in character, increment counter
+            # Hesitant, chatting, or ambiguous — respond in character via LLM
             context.user_data["soft_invite_attempts"] = invite_attempts + 1
             signal = has_buying_signal(text)
             intent_level = _classify_intent_level(text, intent, signal)
-            stage = _maybe_advance_stage(context.user_data, intent, signal, intent_level)
-            recent = context.user_data.get("recent_lines", [])
-            if intent == "objection":
-                reply = pick_line("objection", recent)
-                _track_response(context.user_data, "objection", reply)
-            elif intent == "dry":
+            _maybe_advance_stage(context.user_data, intent, signal, intent_level)
+            if intent == "dry" and "?" not in text:
+                recent = context.user_data.get("recent_lines", [])
                 reply = pick_line("dry", recent)
                 _track_response(context.user_data, "dry", reply)
             else:
-                cat = _stage_to_category(stage)
-                reply = pick_line(cat, recent)
-                _track_response(context.user_data, cat, reply)
+                # LLM so the reply actually addresses their specific objection or question
+                llm_stage = "objection" if intent == "objection" else "partial_reveal"
+                reply = await chat_reply(text, context={"stage": llm_stage})
+                _track_response(context.user_data, llm_stage, reply)
             await _type_and_send(context.bot, chat_id, reply)
 
         return
@@ -847,15 +858,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await asyncio.sleep(random.uniform(1.2, 2.0))
             await _show_packs(update, context)
             return
-        recent = context.user_data.get("recent_lines", [])
-        if intent == "dry":
+        if intent == "dry" and "?" not in text:
+            recent = context.user_data.get("recent_lines", [])
             reply = pick_line("dry", recent)
             _track_response(context.user_data, "dry", reply)
-        elif intent == "objection":
-            cat = "curiosity" if intent_level == "high" else "challenge"
-            reply = pick_line(cat, recent)
-            _track_response(context.user_data, cat, reply)
+        elif intent == "objection" or "?" in text:
+            llm_stage = "objection" if intent == "objection" else stage
+            reply = await chat_reply(text, context={"stage": llm_stage})
+            _track_response(context.user_data, llm_stage, reply)
         else:
+            recent = context.user_data.get("recent_lines", [])
             cat = _stage_to_category(stage)
             reply = pick_line(cat, recent)
             _track_response(context.user_data, cat, reply)
@@ -899,14 +911,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Default: respond conversationally — no buttons, no re-offer push
         stage = context.user_data.get("conversation_stage", "post_offer")
-        recent = context.user_data.get("recent_lines", [])
-        if intent == "objection":
-            reply = pick_line("challenge", recent)
-            _track_response(context.user_data, "challenge", reply)
-        elif intent == "dry":
+        if intent == "objection" or "?" in text:
+            # Objections and questions need contextual LLM replies — library picks ignore content
+            llm_stage = "objection" if intent == "objection" else stage
+            reply = await chat_reply(text, context={"stage": llm_stage})
+            _track_response(context.user_data, llm_stage, reply)
+        elif intent == "dry" and "?" not in text:
+            recent = context.user_data.get("recent_lines", [])
             reply = pick_line("dry", recent)
             _track_response(context.user_data, "dry", reply)
         else:
+            recent = context.user_data.get("recent_lines", [])
             cat = _stage_to_category(stage)
             reply = pick_line(cat, recent)
             _track_response(context.user_data, cat, reply)
