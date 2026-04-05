@@ -752,31 +752,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ── Normal response ───────────────────────────────────────────────────
         recent = context.user_data.get("recent_lines", [])
 
-        # Stall override — two consecutive low-energy replies means we're looping
+        # Stall override — two consecutive low-energy replies → force escalation
         if _is_stalling(context.user_data) and intent not in ("exit", "dry"):
-            force_cat = "curiosity" if stage in ("tease", "partial_reveal") else "tension"
-            reply = pick_line(force_cat, recent)
-            _track_response(context.user_data, force_cat, reply)
+            force_stage = "curiosity" if stage in ("tease", "partial_reveal") else stage
+            reply = await chat_reply(text, context={"stage": force_stage})
+            _track_response(context.user_data, "tension", reply)
             await _type_and_send(context.bot, chat_id, reply)
             return
 
         if intent == "dry":
+            # Dry = low effort: library challenge is fine (generic is intentional here)
             reply = pick_line("dry", recent)
             _track_response(context.user_data, "dry", reply)
-        elif intent == "objection":
-            # High-intent hesitation: use curiosity pull, not pushback
-            cat = "curiosity" if intent_level == "high" else "challenge"
-            reply = pick_line(cat, recent)
-            _track_response(context.user_data, cat, reply)
-        elif intent_escalated:
-            # User leaned in — reward the investment with selective attention
-            reply = pick_line("pull", recent)
-            _track_response(context.user_data, "pull", reply)
+            await _type_and_send(context.bot, chat_id, reply)
+        elif intent == "objection" or intent_level in ("mid", "high") or intent_escalated:
+            # Mid/high intent and objections need contextual responses — route through LLM
+            # so the reply actually references what the user said
+            llm_stage = (
+                "objection" if intent == "objection"
+                else "partial_reveal" if intent_escalated and intent_level == "high"
+                else stage
+            )
+            reply = await chat_reply(text, context={"stage": llm_stage})
+            _track_response(context.user_data, llm_stage, reply)
+            await _type_and_send(context.bot, chat_id, reply)
         else:
+            # Low intent, normal: library is fast and sufficient
             cat = _stage_to_category(stage)
             reply = pick_line(cat, recent)
             _track_response(context.user_data, cat, reply)
-        await _type_and_send(context.bot, chat_id, reply)
+            await _type_and_send(context.bot, chat_id, reply)
         return
 
     # ── SOFT_INVITE: show packs only on clear signal, never by default ───────
