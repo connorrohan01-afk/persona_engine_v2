@@ -462,8 +462,9 @@ def _track_response(user_data: dict, category: str, line: str) -> None:
     recent_lines_used.append(line)
     user_data["recent_lines"] = recent_lines_used[-2:]
 
-    # Stall counter — resets on any escalating category, increments on low-energy ones
-    _low_energy = {"dry", "challenge", "redirect", "repeat"}
+    # Stall counter — resets on escalating categories, increments on flat/low-energy ones
+    # "tension" and "pull" are escalating but library picks can still feel flat — only reset on LLM turns
+    _low_energy = {"dry", "challenge", "redirect", "repeat", "tension", "pull", "curiosity"}
     if category in _low_energy:
         user_data["stall_count"] = user_data.get("stall_count", 0) + 1
     else:
@@ -471,7 +472,7 @@ def _track_response(user_data: dict, category: str, line: str) -> None:
 
 
 def _is_stalling(user_data: dict) -> bool:
-    """Two consecutive low-energy responses without escalation → stalling."""
+    """Two consecutive library/low-energy responses → stalling. Force LLM escalation."""
     return user_data.get("stall_count", 0) >= 2
 
 
@@ -861,11 +862,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
         else:
-            # Low intent, no question: library pick
-            cat = _stage_to_category(stage)
-            reply = pick_line(cat, recent)
-            _track_response(context.user_data, cat, reply)
-            _push_history(context.user_data, text, reply)
+            # micro_reward and tension_build are emotional payoff stages — always LLM, never library
+            if stage in ("micro_reward", "tension_build"):
+                reply = await chat_reply(text, context={"stage": stage}, history=history)
+                _track_response(context.user_data, stage, reply)
+                _push_history(context.user_data, text, reply)
+            else:
+                cat = _stage_to_category(stage)
+                reply = pick_line(cat, recent)
+                _track_response(context.user_data, cat, reply)
+                _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
         return
 
