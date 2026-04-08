@@ -504,6 +504,10 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
                          "not for everyone. the ones who get it really get it",
                          "you'd know if you saw it",
                          "fair. most people think that before they look"],
+        "high_intent":  ["you get a version of me that's not this. a bit less filtered",
+                         "depends how far you actually want to go with it",
+                         "it's not really about what you get. it's about what shifts",
+                         "less careful. more open. you'd notice the difference"],
         "meetup":       ["i'd actually like that. the version of me you'd want to meet comes after this though",
                          "that's not off the table. it's just not where we are yet",
                          "you'd have to earn that a little. but you're not far off"],
@@ -605,6 +609,17 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "SOFT WITHDRAWAL: mm. fair. not everyone leans into it\n"
             "SELECTIVE FRAME: i don't show that side to everyone anyway\n"
             "Goal: make them feel they might be missing something. One line. Confident."
+        ),
+        "high_intent": (
+            "STATE: HIGH INTENT — user is asking what they get or what happens if they buy\n"
+            "This is a buying signal. Do NOT explain. Do NOT describe content. Do NOT list anything.\n"
+            "Structure: soft answer → tease the deeper side → pull forward.\n"
+            "Answer briefly, increase intrigue, link to the emotional payoff — access to a less-filtered version of her.\n"
+            "Example: you get a version of me that's not this. a bit less filtered\n"
+            "Example: depends how far you actually want to go with it\n"
+            "Example: it's not really about what you get. it's about what shifts\n"
+            "Keep it emotional, suggestive, incomplete. Never full clarity. Never a product description.\n"
+            "One to two lines. Then let the vault appear."
         ),
         "upsell": (
             "Mention offhand that more exists. Footnote, not pitch. One line."

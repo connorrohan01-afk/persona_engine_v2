@@ -161,11 +161,25 @@ _CONTENT_QUESTION_PHRASES = [
     "the vip", "the premium", "the starter", "pack a", "pack b", "pack c",
 ]
 
+# High-intent buying questions — "what happens if I get it", "then what", etc.
+_HIGH_INTENT_QUESTION_PHRASES = [
+    "what happens if i get", "what happens if i buy", "what happens after",
+    "what do i get", "then what", "and then what", "what next",
+    "what would i get", "what would happen", "what changes",
+    "so what do i get", "so what happens",
+]
+
 
 def _is_asking_about_content(text: str) -> bool:
     """User is directly asking about the packs or content — a natural re-offer moment."""
     text_lower = text.lower()
     return any(p in text_lower for p in _CONTENT_QUESTION_PHRASES)
+
+
+def _is_high_intent_question(text: str) -> bool:
+    """User is asking what they get or what happens — high-intent buying curiosity."""
+    text_lower = text.lower()
+    return any(p in text_lower for p in _HIGH_INTENT_QUESTION_PHRASES)
 
 
 def has_buying_signal(text: str) -> bool:
@@ -855,6 +869,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             llm_stage = (
                 "objection" if intent == "objection"
                 else "partial_reveal" if intent_escalated and intent_level == "high"
+                else "high_intent" if _is_high_intent_question(text)
                 else stage
             )
             reply = await chat_reply(text, context={"stage": llm_stage}, history=history)
