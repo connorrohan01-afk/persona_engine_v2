@@ -721,6 +721,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _track_response(context.user_data, "redirect", reply)
         _push_history(context.user_data, text, reply)
         await _type_and_send(context.bot, chat_id, reply)
+        # Meetup is a conversion trigger — show collection after the bridge line
+        await asyncio.sleep(random.uniform(1.5, 2.5))
+        await _show_packs(update, context)
         return
 
     # ── Repeat test — call out the loop ──────────────────────────────────────
@@ -764,6 +767,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         strong = _is_strong_buy_signal(text)
         intent_level = _classify_intent_level(text, intent, signal)
         stage = _maybe_advance_stage(context.user_data, intent, signal, intent_level)
+
+        # ── Conversion trigger — evaluate whether to show the collection UI ──
+        last_offer_turn = context.user_data.get("last_offer_turn", -_PACK_INTRO_COOLDOWN)
+        cooldown_threshold = 2 if (_is_buying_signal(text) or strong) else _PACK_INTRO_COOLDOWN
+        cooldown_ok = (turn_count - last_offer_turn) >= cooldown_threshold
+
+        _trigger_direct    = _is_buying_signal(text) or strong
+        _trigger_question  = _is_asking_about_content(text) or _is_high_intent_question(text)
+        _trigger_natural   = stage == "partial_reveal" and intent_level in ("mid", "high")
+        _trigger_tease_yes = stage in ("tease", "partial_reveal") and _is_affirmative(text)
+        _trigger_sustained = (
+            turn_count >= _WARMUP_MIN_TURNS + 5
+            and engagement > 2
+            and stage in ("tease", "partial_reveal")
+        )
+
+        if cooldown_ok and (
+            _trigger_direct
+            or _trigger_question
+            or _trigger_natural
+            or _trigger_tease_yes
+            or _trigger_sustained
+        ):
+            context.user_data["conversation_stage"] = "partial_reveal"
+            await db.set_conversation_stage(user_id, "partial_reveal")
+            bridge = await chat_reply(text, context={"stage": "partial_reveal"}, history=history)
+            _track_response(context.user_data, "reward", bridge)
+            _push_history(context.user_data, text, bridge)
+            await _type_and_send(context.bot, chat_id, bridge)
+            await asyncio.sleep(random.uniform(1.2, 2.0))
+            await _show_packs(update, context)
+            return
 
         # ── Normal response ───────────────────────────────────────────────────
         recent = context.user_data.get("recent_lines", [])

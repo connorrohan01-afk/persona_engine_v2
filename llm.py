@@ -412,6 +412,9 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
                          "lol okay. you'll be back",
                          "sure about that",
                          "that's your call"],
+        "partial_reveal": ["okay. here's what i've been putting together",
+                           "you've been here long enough. this is what comes next",
+                           "this is the part that doesn't exist in a regular chat"],
         "curiosity":    ["something about the way this is going",
                          "there's more under that than you're showing",
                          "you're more interesting than you're letting on right now"],
@@ -476,6 +479,15 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "Example: what you're getting here isn't all of it. not even close\n"
             "Example: i'm a lot less careful when i decide to be. you haven't seen that yet\n"
             "No questions. One line."
+        ),
+        "partial_reveal": (
+            "The conversation has built to this. One short line — acknowledge something real exists past this chat.\n"
+            "Not a sales line. A natural next step. Frame it as what's been waiting.\n"
+            "Example: okay. here's what i've been putting together\n"
+            "Example: you've been here long enough. this is what comes next\n"
+            "Example: this is the part that doesn't exist in a regular chat\n"
+            "Example: here it is. what i was hinting at\n"
+            "Calm. One line. The collection appears immediately after."
         ),
         "dry": (
             "They gave almost nothing. This is your moment to lead — not react.\n"
