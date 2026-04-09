@@ -965,9 +965,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Default: respond conversationally — no buttons, no re-offer push
         stage = context.user_data.get("conversation_stage", "warmup")
-        if intent == "objection" or "?" in text:
+        if intent == "objection":
+            # Hesitant/uncertain after seeing packs — maintain intrigue, don't push or drop
+            reply = await chat_reply(text, context={"stage": "post_offer_objection"}, history=history)
+            _track_response(context.user_data, "post_offer_objection", reply)
+            _push_history(context.user_data, text, reply)
+        elif "?" in text:
             reply = await chat_reply(text, context={"stage": stage}, history=history)
-            _track_response(context.user_data, llm_stage, reply)
+            _track_response(context.user_data, stage, reply)
             _push_history(context.user_data, text, reply)
         elif intent == "dry" and "?" not in text:
             reply = await chat_reply(text, context={"stage": "dry"}, history=history)

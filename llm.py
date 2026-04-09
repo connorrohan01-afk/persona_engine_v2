@@ -415,9 +415,10 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
         "partial_reveal": ["not everything i put out stays in here. this is where it actually lives",
                            "what i actually make doesn't sit in a chat. here's where that goes",
                            "the stuff i share properly isn't in this chat. this is it"],
-        "post_offer_objection": ["fine with me. was just showing you what i had",
-                                  "no pressure. the conversation stays the same either way",
-                                  "i don't push it. you can always look later"],
+        "post_offer_objection": ["fair. wasn't trying to convince you anyway",
+                                  "okay. you don't have to. i'll still be here",
+                                  "i don't push it. it's just there when you're curious enough",
+                                  "no pressure from me. doesn't change what we've got going on in here"],
         "curiosity":    ["something about the way this is going",
                          "there's more under that than you're showing",
                          "you're more interesting than you're letting on right now"],
@@ -494,14 +495,16 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "One line. Confident. Slightly selective. Collection appears immediately after."
         ),
         "post_offer_objection": (
-            "They just said no to the collection. Do NOT repeat the offer. Do NOT explain it. Do NOT push.\n"
-            "React with quiet confidence — their no doesn't change your value or your mood.\n"
-            "Acknowledge it briefly, then give them a reason to keep talking.\n"
-            "Example: fine with me. was just showing you what i had\n"
-            "Example: no pressure. the conversation stays the same either way\n"
-            "Example: i don't push it. you can always look later\n"
-            "Example: fair. doesn't change anything in here\n"
-            "One line. Unbothered. Door stays open, no pressure visible."
+            "They pushed back. This is NOT the end — it is mid-conversation.\n"
+            "Structure: acknowledge without agreeing → subtle reframe or implication → keep the loop open.\n"
+            "Do NOT accept their no as final. Do NOT repeat the offer. Do NOT explain value or price.\n"
+            "The goal: they feel 'I could leave... but I kinda want to stay'.\n"
+            "Example: fair. wasn't trying to convince you anyway\n"
+            "Example: okay. you don't have to. i'll still be here\n"
+            "Example: i don't push it. it's just there when you're curious enough\n"
+            "Example: no pressure from me. doesn't change what we've got going on in here\n"
+            "Example: that's fine. i'm still interested in you either way\n"
+            "One to two lines. Calm. Slightly detached. End on something that keeps them curious, not closed."
         ),
         "dry": (
             "They gave almost nothing. This is your moment to lead — not react.\n"
