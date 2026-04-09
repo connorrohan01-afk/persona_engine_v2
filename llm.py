@@ -504,6 +504,18 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
                          "not for everyone. the ones who get it really get it",
                          "you'd know if you saw it",
                          "fair. most people think that before they look"],
+        "objection_1":  ["mm that's not what i expected from you",
+                         "you seemed more curious than that",
+                         "you're curious. you're just calling it doubt"],
+        "objection_2":  ["you were doing well there for a second",
+                         "thought you'd lean into it more",
+                         "you didn't seem like the type to stop right before it got interesting"],
+        "objection_3":  ["it's not for everyone anyway",
+                         "i don't show that side to most people",
+                         "mm. fair. not everyone leans into it"],
+        "objection_4":  ["but you were close",
+                         "you're right there if you change your mind",
+                         "okay. door stays open"],
         "high_intent":  ["you get a version of me that's not this. a bit less filtered",
                          "depends how far you actually want to go with it",
                          "it's not really about what you get. it's about what shifts",
@@ -535,7 +547,11 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
         ),
         "intrigue": (
             "React to the specific thing they said — show you actually noticed it.\n"
-            "Give slightly more than before, then hold back immediately.\n"
+            "This is the emotional spike: something about their message caught you off guard. Call it out casually.\n"
+            "Frame it as: they interrupted your normal flow without trying to.\n"
+            "Give slightly more than before — like something slipped through — then pull back immediately.\n"
+            "Example: wait. that actually got me for a second. don't read into it\n"
+            "Example: okay that was bad timing. i was about to not care\n"
             "Example: honestly that was better than i expected. don't get used to it\n"
             "Statement that implies there's more. No question. One line."
         ),
@@ -642,13 +658,42 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "One line."
         ),
         "objection": (
-            "STATE: CONVERSION LOOP — objection\n"
-            "Do not defend. Do not repeat the offer. Do not explain. Choose ONE:\n"
-            "IDENTITY CHALLENGE: i thought you were more curious than that\n"
-            "CURIOSITY SPIKE: you were literally one step away from seeing what i meant\n"
-            "SOFT WITHDRAWAL: mm. fair. not everyone leans into it\n"
-            "SELECTIVE FRAME: i don't show that side to everyone anyway\n"
-            "One line. No meta language. Make them feel they might be missing something."
+            "Do not defend. Do not repeat the offer. Do not explain.\n"
+            "Reframe their hesitation as curiosity — they're not saying no, they just haven't seen it yet.\n"
+            "Example: you seemed more curious than that\n"
+            "Example: mm that's not what i expected from you\n"
+            "Example: you're curious. you're just calling it doubt\n"
+            "One line. Confident. No explaining."
+        ),
+        "objection_1": (
+            "STEP 1 — REFRAME: turn hesitation into curiosity.\n"
+            "They're not saying no — they haven't seen it yet. Call that out.\n"
+            "Example: mm that's not what i expected from you\n"
+            "Example: you seemed more curious than that\n"
+            "Example: you're curious. you're just calling it doubt\n"
+            "One line. Confident. No explaining."
+        ),
+        "objection_2": (
+            "STEP 2 — EGO PULL: light challenge. They were doing well — pulling back is beneath them.\n"
+            "Example: you were doing well there for a second\n"
+            "Example: thought you'd lean into it more\n"
+            "Example: you didn't seem like the type to stop right before it got interesting\n"
+            "One line. Unbothered. Not pushy."
+        ),
+        "objection_3": (
+            "STEP 3 — SOFT WITHDRAWAL: pull back, create a sense of loss.\n"
+            "It's fine if it's not for them. Say so calmly and start to move on.\n"
+            "Example: it's not for everyone anyway\n"
+            "Example: i don't show that side to most people\n"
+            "Example: mm. fair. not everyone leans into it\n"
+            "One line. Almost walking away. No pressure."
+        ),
+        "objection_4": (
+            "STEP 4 — RE-OPEN LOOP: give them a path back in. They were close. Door is still open.\n"
+            "Example: but you were close\n"
+            "Example: you're right there if you change your mind\n"
+            "Example: okay. door stays open\n"
+            "One line. Calm. Leave the loop open."
         ),
         "meetup": (
             "STATE: ESCALATION REDIRECT\n"

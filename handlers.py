@@ -490,6 +490,18 @@ def _is_stalling(user_data: dict) -> bool:
     return user_data.get("stall_count", 0) >= 2
 
 
+def _get_objection_stage(user_data: dict) -> str:
+    """Return the next sequential objection stage and advance the step counter.
+
+    Steps cycle: objection_1 (reframe) → objection_2 (ego pull) →
+                 objection_3 (soft withdrawal) → objection_4 (re-open loop) → loop back.
+    """
+    step = user_data.get("objection_step", 0)
+    user_data["objection_step"] = step + 1
+    stages = ["objection_1", "objection_2", "objection_3", "objection_4"]
+    return stages[step % 4]
+
+
 # ── Guard / user helper ───────────────────────────────────────────────────────
 
 async def _guard(update: Update) -> bool:
@@ -761,6 +773,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Any non-exit message resets the exit attempt counter
     context.user_data.pop("exit_attempts", None)
 
+    # Non-objection messages reset the sequential objection step counter
+    if intent != "objection":
+        context.user_data.pop("objection_step", None)
+
     # ── WARMUP: engage naturally, track turns, advance when ready ────────────
     if state in (State.GREETING, State.WARMUP):
         history = context.user_data.get("history", [])
@@ -867,7 +883,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ):
             # Contextual responses — route through LLM so the reply references what they said
             llm_stage = (
-                "objection" if intent == "objection"
+                _get_objection_stage(context.user_data) if intent == "objection"
                 else "partial_reveal" if intent_escalated and intent_level == "high"
                 else "high_intent" if _is_high_intent_question(text)
                 else stage
@@ -923,7 +939,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             signal = has_buying_signal(text)
             intent_level = _classify_intent_level(text, intent, signal)
             _maybe_advance_stage(context.user_data, intent, signal, intent_level)
-            llm_stage = "objection" if intent == "objection" else "partial_reveal"
+            llm_stage = _get_objection_stage(context.user_data) if intent == "objection" else "partial_reveal"
             reply = await chat_reply(text, context={"stage": llm_stage}, history=history)
             _track_response(context.user_data, llm_stage, reply)
             _push_history(context.user_data, text, reply)
@@ -956,7 +972,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _track_response(context.user_data, "dry", reply)
             _push_history(context.user_data, text, reply)
         elif intent == "objection" or "?" in text:
-            llm_stage = "objection" if intent == "objection" else stage
+            llm_stage = _get_objection_stage(context.user_data) if intent == "objection" else stage
             reply = await chat_reply(text, context={"stage": llm_stage}, history=history)
             _track_response(context.user_data, llm_stage, reply)
             _push_history(context.user_data, text, reply)
