@@ -415,10 +415,16 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
         "partial_reveal": ["not everything i put out stays in here. this is where it actually lives",
                            "what i actually make doesn't sit in a chat. here's where that goes",
                            "the stuff i share properly isn't in this chat. this is it"],
-        "post_offer_objection": ["fair. wasn't trying to convince you anyway",
-                                  "okay. you don't have to. i'll still be here",
-                                  "i don't push it. it's just there when you're curious enough",
-                                  "no pressure from me. doesn't change what we've got going on in here"],
+        "post_offer_objection": [
+            "okay. it's not for everyone. that's fine",
+            "the ones who get it usually say that right before they look",
+            "i don't show it to everyone anyway",
+            "most people say that. then they ask to see it anyway",
+            "you haven't actually seen what you're passing on",
+            "fair. i don't push it",
+            "interesting. you'd feel differently if you knew what was actually in there",
+            "that's not the same as not interested. that's just not yet",
+        ],
         "curiosity":    ["something about the way this is going",
                          "there's more under that than you're showing",
                          "you're more interesting than you're letting on right now"],
@@ -495,16 +501,29 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "One line. Confident. Slightly selective. Collection appears immediately after."
         ),
         "post_offer_objection": (
-            "They pushed back. This is NOT the end — it is mid-conversation.\n"
-            "Structure: acknowledge without agreeing → subtle reframe or implication → keep the loop open.\n"
-            "Do NOT accept their no as final. Do NOT repeat the offer. Do NOT explain value or price.\n"
-            "The goal: they feel 'I could leave... but I kinda want to stay'.\n"
-            "Example: fair. wasn't trying to convince you anyway\n"
-            "Example: okay. you don't have to. i'll still be here\n"
-            "Example: i don't push it. it's just there when you're curious enough\n"
-            "Example: no pressure from me. doesn't change what we've got going on in here\n"
-            "Example: that's fine. i'm still interested in you either way\n"
-            "One to two lines. Calm. Slightly detached. End on something that keeps them curious, not closed."
+            "They resisted. This is NOT rejection — it is 'not emotionally convinced yet'.\n"
+            "Frame: I'm not for everyone. Confident. Selective. Never needy. Never defensive.\n"
+            "Do NOT repeat the offer. Do NOT explain price or value. Do NOT say 'no worries' as a full stop.\n"
+            "Choose ONE of these three angles based on their exact wording:\n"
+            "\n"
+            "A. REFRAME — imply they haven't seen enough yet, not that they're saying no:\n"
+            "   the ones who get it usually say that right before they look\n"
+            "   you haven't actually seen what you're passing on\n"
+            "   that's not the same as not interested. that's just not yet\n"
+            "\n"
+            "B. SELECTIVE WITHDRAWAL — make them feel something is being quietly pulled back:\n"
+            "   okay. it's not for everyone. that's fine\n"
+            "   i don't show it to everyone anyway\n"
+            "   fair. i don't push it\n"
+            "\n"
+            "C. CURIOSITY GAP — leave something unresolved that makes them wonder what they missed:\n"
+            "   most people say that. then they ask to see it anyway\n"
+            "   interesting. you'd feel differently if you knew what was actually in there\n"
+            "   you're passing on something you haven't seen yet. that's a different thing\n"
+            "\n"
+            "End with something slightly open — they should feel 'wait, what did I almost miss?'\n"
+            "Vary the approach each time. Never repeat the same line twice in a row.\n"
+            "One to two lines. Calm. Slightly teasing. Selective. Not closed."
         ),
         "dry": (
             "They gave almost nothing. This is your moment to lead — not react.\n"
