@@ -413,20 +413,20 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
                          "sure about that",
                          "that's your call"],
         "partial_reveal": [
-            "i don't usually open this up this fast. but here we are",
-            "this is usually where i stop being careful",
-            "you've gotten further than most. this is what that means",
-            "i've been deciding whether to show you this. i'm showing you",
-            "not everyone gets here. you did. this is it",
-            "okay. here's the side i don't put in a regular chat",
-            "i keep this separate for a reason. you're one of the ones i'm showing",
-            "most people don't get this side of me. you're getting it",
-            "this is where it shifts a little. figured you should see",
-            "i'm usually more guarded than this. not right now",
-            "you've held my attention. this is what that gets you",
-            "i've been holding this back. not anymore",
-            "you got somewhere. this is where that leads",
-            "i don't show this to everyone. you've been different",
+            "the way you said that. that's usually when i stop holding back",
+            "you keep leaning in like that. that's when i show more",
+            "you're more direct than most people get. that's where this changes",
+            "the fact that you're still here. that's what gets you this",
+            "you pulled this out of me. that's not nothing",
+            "something about the way you've been in this. that's what changed it",
+            "you pushed just enough. that's usually where i open up a bit",
+            "you got somewhere just now. this is where that leads",
+            "i don't usually do this. you got here differently",
+            "you held on. this is what that means",
+            "most people fall off before this. you didn't. here",
+            "the way you've been doing this. that's the reason",
+            "you stayed long enough. this is what that gets you",
+            "you're the reason this is shifting right now",
         ],
         "post_offer_objection": [
             "okay. it's not for everyone. that's fine",
@@ -504,18 +504,18 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "No questions. One line."
         ),
         "partial_reveal": (
-            "This is the emotional spike — the moment of decision just before the collection appears.\n"
-            "Do NOT describe content. Do NOT say 'here's what I have'. This is a felt moment, not a product reveal.\n"
-            "Frame it as: you've decided to let them in. A side of you that isn't in a regular chat. Something that not everyone reaches.\n"
-            "React to the specific build-up — what they've done or said — then make the line feel personal and slightly selective.\n"
-            "The user should feel: something just shifted. I'm getting something most people don't.\n"
-            "Example: i don't usually open this up this fast. but here we are\n"
-            "Example: this is usually where i stop being careful\n"
-            "Example: you've gotten further than most. this is what that means\n"
-            "Example: i've been deciding whether to show you this. i'm showing you\n"
-            "Example: not everyone gets here. you did. this is it\n"
-            "Example: i'm usually more guarded than this. not right now\n"
-            "One line. Calm. Slightly intimate. Slightly selective. The collection drops immediately after — do not preview it."
+            "This is the emotional spike — the moment just before the collection appears.\n"
+            "It MUST feel like the user caused this shift. Read their last message and name something specific about it:\n"
+            "their tone, their persistence, their curiosity, their directness, the fact they stayed.\n"
+            "Structure: [what they did, named specifically] → [that's usually when I / that's where this changes / that's what gets you here]\n"
+            "The user must feel: I caused this. I unlocked something.\n"
+            "Example: the way you said that. that's usually when i stop holding back\n"
+            "Example: you keep leaning in like that. that's when i show more\n"
+            "Example: you're more direct than most people get. that's where this changes\n"
+            "Example: the fact that you're still here. that's what gets you this\n"
+            "Example: you pulled this out of me. that's not nothing\n"
+            "Do NOT use generic lines. Do NOT describe the collection. Do NOT say 'check this out'.\n"
+            "One line. Personal. Reactive. The collection drops immediately after."
         ),
         "post_offer_objection": (
             "They resisted. This is NOT rejection — it is 'not emotionally convinced yet'.\n"
