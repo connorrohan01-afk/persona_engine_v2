@@ -490,16 +490,6 @@ def _is_stalling(user_data: dict) -> bool:
     return user_data.get("stall_count", 0) >= 2
 
 
-def _get_objection_stage(user_data: dict) -> str:
-    """Return the next sequential objection stage and advance the step counter.
-
-    Steps cycle: objection_1 (reframe) → objection_2 (ego pull) →
-                 objection_3 (soft withdrawal) → objection_4 (re-open loop) → loop back.
-    """
-    step = user_data.get("objection_step", 0)
-    user_data["objection_step"] = step + 1
-    stages = ["objection_1", "objection_2", "objection_3", "objection_4"]
-    return stages[step % 4]
 
 
 # ── Guard / user helper ───────────────────────────────────────────────────────
@@ -730,9 +720,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = await chat_reply(text, context={"stage": "meetup"}, history=history)
         _track_response(context.user_data, "redirect", reply)
         _push_history(context.user_data, text, reply)
-        # Mark vault path active — next turns stay on vault trajectory, not generic warmup
-        context.user_data["vault_path_active"] = True
-        context.user_data["vault_path_turns"] = 0
         await _type_and_send(context.bot, chat_id, reply)
         return
 
@@ -749,19 +736,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if exit_count == 0:
             context.user_data["exit_attempts"] = 1
             history = context.user_data.get("history", [])
-            current_stage = context.user_data.get("conversation_stage", "hook")
             # LLM exit line so it references the specific moment, not a generic library pick
             reply = await chat_reply(text, context={"stage": "reengagement"}, history=history)
             _track_response(context.user_data, "retention", reply)
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
-            # Deep in the funnel — follow with a contextual vault hint
-            if current_stage in ("tease", "partial_reveal"):
-                await asyncio.sleep(random.uniform(2.0, 3.0))
-                vault_hint = await chat_reply(text, context={"stage": "tease"}, history=history)
-                _track_response(context.user_data, "curiosity", vault_hint)
-                _push_history(context.user_data, text, vault_hint)
-                await _type_and_send(context.bot, chat_id, vault_hint, delay=0.8)
             return
         # Second exit attempt — let them go
         context.user_data.pop("exit_attempts", None)
@@ -772,10 +751,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Any non-exit message resets the exit attempt counter
     context.user_data.pop("exit_attempts", None)
-
-    # Non-objection messages reset the sequential objection step counter
-    if intent != "objection":
-        context.user_data.pop("objection_step", None)
 
     # ── WARMUP: engage naturally, track turns, advance when ready ────────────
     if state in (State.GREETING, State.WARMUP):
@@ -789,65 +764,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         strong = _is_strong_buy_signal(text)
         intent_level = _classify_intent_level(text, intent, signal)
         stage = _maybe_advance_stage(context.user_data, intent, signal, intent_level)
-
-        # ── Vault path tracking (post-meetup or post-redirect) ────────────────
-        # Keeps stage at tease-minimum and fires vault after 3 engaged turns on path
-        if context.user_data.get("vault_path_active"):
-            vpt = context.user_data.get("vault_path_turns", 0) + 1
-            context.user_data["vault_path_turns"] = vpt
-            if stage in ("hook", "intrigue", "micro_reward"):
-                context.user_data["conversation_stage"] = "tease"
-                stage = "tease"
-            if vpt >= 3:
-                context.user_data.pop("vault_path_active", None)
-                context.user_data["vault_path_turns"] = 0
-                context.user_data["conversation_stage"] = "partial_reveal"
-                await db.set_conversation_stage(user_id, "partial_reveal")
-                framing = await chat_reply(text, context={"stage": "partial_reveal"}, history=history)
-                _track_response(context.user_data, "reward", framing)
-                _push_history(context.user_data, text, framing)
-                await _type_and_send(context.bot, chat_id, framing)
-                await asyncio.sleep(random.uniform(1.2, 2.0))
-                await _show_packs(update, context)
-                return
-
-        # Track intent escalation — reward users who lean in
-        prev_intent_level = context.user_data.get("last_intent_level", "low")
-        context.user_data["last_intent_level"] = intent_level
-        intent_escalated = (
-            (prev_intent_level == "low" and intent_level in ("mid", "high"))
-            or (prev_intent_level == "mid" and intent_level == "high")
-        )
-
-        last_offer_turn = context.user_data.get("last_offer_turn", -_PACK_INTRO_COOLDOWN)
-        # High-intent users aren't held at a long cooldown — act when they're ready
-        cooldown_threshold = 2 if intent_level == "high" else _PACK_INTRO_COOLDOWN
-        cooldown_ok = (turn_count - last_offer_turn) >= cooldown_threshold
-
-        # ── Vault decision ────────────────────────────────────────────────────
-        # HIGH intent: vault after _HIGH_INTENT_MIN_TURNS (2) regardless of stage
-        # Strong buy signal: vault after normal min turns
-        # Natural progression: vault when stage reaches partial_reveal
-        vault_now = (
-            engagement >= 0
-            and cooldown_ok
-            and (
-                (intent_level == "high" and turn_count >= _HIGH_INTENT_MIN_TURNS)
-                or (strong and turn_count >= _WARMUP_MIN_TURNS)
-                or stage == "partial_reveal"
-            )
-        )
-        if vault_now:
-            context.user_data["conversation_stage"] = "partial_reveal"
-            await db.set_conversation_stage(user_id, "partial_reveal")
-            # LLM framing so it references the user's specific message — not a generic library drop
-            framing = await chat_reply(text, context={"stage": "partial_reveal"}, history=history)
-            _track_response(context.user_data, "reward", framing)
-            _push_history(context.user_data, text, framing)
-            await _type_and_send(context.bot, chat_id, framing)
-            await asyncio.sleep(random.uniform(1.2, 2.0))
-            await _show_packs(update, context)
-            return
 
         # ── Normal response ───────────────────────────────────────────────────
         recent = context.user_data.get("recent_lines", [])
@@ -878,16 +794,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif (
             intent == "objection"
             or intent_level in ("mid", "high")
-            or intent_escalated
             or "?" in text  # Direct questions always need contextual LLM reply
         ):
             # Contextual responses — route through LLM so the reply references what they said
-            llm_stage = (
-                _get_objection_stage(context.user_data) if intent == "objection"
-                else "partial_reveal" if intent_escalated and intent_level == "high"
-                else "high_intent" if _is_high_intent_question(text)
-                else stage
-            )
+            llm_stage = stage
             reply = await chat_reply(text, context={"stage": llm_stage}, history=history)
             _track_response(context.user_data, llm_stage, reply)
             _push_history(context.user_data, text, reply)
@@ -939,7 +849,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             signal = has_buying_signal(text)
             intent_level = _classify_intent_level(text, intent, signal)
             _maybe_advance_stage(context.user_data, intent, signal, intent_level)
-            llm_stage = _get_objection_stage(context.user_data) if intent == "objection" else "partial_reveal"
+            llm_stage = stage
             reply = await chat_reply(text, context={"stage": llm_stage}, history=history)
             _track_response(context.user_data, llm_stage, reply)
             _push_history(context.user_data, text, reply)
@@ -951,30 +861,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == State.CURIOSITY:
         history = context.user_data.get("history", [])
         signal = has_buying_signal(text)
-        strong = _is_strong_buy_signal(text)
         intent_level = _classify_intent_level(text, intent, signal)
         stage = _maybe_advance_stage(context.user_data, intent, signal, intent_level)
-        turn_count = context.user_data.get("current_turn", 0)
-        last_offer_turn = context.user_data.get("last_offer_turn", -_PACK_INTRO_COOLDOWN)
-        cooldown_threshold = 2 if intent_level == "high" else _PACK_INTRO_COOLDOWN
-        cooldown_ok = (turn_count - last_offer_turn) >= cooldown_threshold
-        if cooldown_ok and (intent_level == "high" or strong or stage == "partial_reveal"):
-            # LLM framing so vault pivot references what they just said — not a library drop
-            framing = await chat_reply(text, context={"stage": "partial_reveal"}, history=history)
-            _track_response(context.user_data, "reward", framing)
-            _push_history(context.user_data, text, framing)
-            await _type_and_send(context.bot, chat_id, framing)
-            await asyncio.sleep(random.uniform(1.2, 2.0))
-            await _show_packs(update, context)
-            return
         if intent == "dry" and "?" not in text:
             reply = await chat_reply(text, context={"stage": "dry"}, history=history)
             _track_response(context.user_data, "dry", reply)
             _push_history(context.user_data, text, reply)
         elif intent == "objection" or "?" in text:
-            llm_stage = _get_objection_stage(context.user_data) if intent == "objection" else stage
-            reply = await chat_reply(text, context={"stage": llm_stage}, history=history)
-            _track_response(context.user_data, llm_stage, reply)
+            reply = await chat_reply(text, context={"stage": stage}, history=history)
+            _track_response(context.user_data, stage, reply)
             _push_history(context.user_data, text, reply)
         else:
             recent = context.user_data.get("recent_lines", [])
@@ -1003,7 +898,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Too long without clicking — drop back to warmup gracefully, no pressure
             context.user_data["offer_turn_count"] = 0
             await db.set_user_state(user_id, State.WARMUP)
-            reply = await chat_reply(text, context={"stage": "rejected"}, history=history)
+            reply = await chat_reply(text, context={"stage": "warmup"}, history=history)
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
             return
@@ -1012,7 +907,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Hard no — back to warmup, leave door open
             context.user_data["offer_turn_count"] = 0
             await db.set_user_state(user_id, State.WARMUP)
-            reply = await chat_reply(text, context={"stage": "rejected"}, history=history)
+            reply = await chat_reply(text, context={"stage": "warmup"}, history=history)
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
             return
@@ -1024,11 +919,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # Default: respond conversationally — no buttons, no re-offer push
-        stage = context.user_data.get("conversation_stage", "post_offer")
+        stage = context.user_data.get("conversation_stage", "warmup")
         if intent == "objection" or "?" in text:
-            # Objections and questions need contextual LLM replies — library picks ignore content
-            llm_stage = "objection" if intent == "objection" else stage
-            reply = await chat_reply(text, context={"stage": llm_stage}, history=history)
+            reply = await chat_reply(text, context={"stage": stage}, history=history)
             _track_response(context.user_data, llm_stage, reply)
             _push_history(context.user_data, text, reply)
         elif intent == "dry" and "?" not in text:

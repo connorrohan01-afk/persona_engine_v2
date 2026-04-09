@@ -233,17 +233,14 @@ compliment_lines = [
 
 LIBRARY_BY_INTENT = {
     # Primary category names — matched to intent taxonomy
-    "tension":   flirt_lines,           # push/pull, light challenge (TESTING / hook stage)
-    "pull":      desire_lines,          # selective attention, emotional pull (INTERESTED / tension stage)
-    "curiosity": curiosity_lines,       # hidden/reveal language (CURIOUS / curiosity stage)
-    "challenge": objection_lines,       # reframe with quiet confidence (RESISTING)
-    "reward":    pack_transition_lines, # earned-access language (reveal_ready)
-    "retention": exit_lines,            # make leaving feel premature (EXITING)
-    "redirect":  soft_redirect_lines,   # meetup/escalation redirect (ESCALATING)
+    "tension":   flirt_lines,      # push/pull, light challenge (hook stage)
+    "pull":      desire_lines,     # selective attention, emotional pull (tension stage)
+    "curiosity": curiosity_lines,  # implication/hint language (curiosity stage)
+    "retention": exit_lines,       # make leaving feel premature (exit prevention)
     # Utility categories
-    "compliment": compliment_lines,     # earned warmth after a direct compliment
-    "dry":       dry_user_lines,        # explicit dry-user pull lines
-    "repeat":    loop_breaker_lines,    # loop/repeat detection
+    "compliment": compliment_lines,    # earned warmth after a direct compliment
+    "dry":        dry_user_lines,      # dry-user pull lines
+    "repeat":     loop_breaker_lines,  # loop/repeat detection
 }
 
 def pick_line(category, recent_lines=None):
