@@ -412,9 +412,22 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
                          "lol okay. you'll be back",
                          "sure about that",
                          "that's your call"],
-        "partial_reveal": ["not everything i put out stays in here. this is where it actually lives",
-                           "what i actually make doesn't sit in a chat. here's where that goes",
-                           "the stuff i share properly isn't in this chat. this is it"],
+        "partial_reveal": [
+            "i don't usually open this up this fast. but here we are",
+            "this is usually where i stop being careful",
+            "you've gotten further than most. this is what that means",
+            "i've been deciding whether to show you this. i'm showing you",
+            "not everyone gets here. you did. this is it",
+            "okay. here's the side i don't put in a regular chat",
+            "i keep this separate for a reason. you're one of the ones i'm showing",
+            "most people don't get this side of me. you're getting it",
+            "this is where it shifts a little. figured you should see",
+            "i'm usually more guarded than this. not right now",
+            "you've held my attention. this is what that gets you",
+            "i've been holding this back. not anymore",
+            "you got somewhere. this is where that leads",
+            "i don't show this to everyone. you've been different",
+        ],
         "post_offer_objection": [
             "okay. it's not for everyone. that's fine",
             "the ones who get it usually say that right before they look",
@@ -491,14 +504,18 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "No questions. One line."
         ),
         "partial_reveal": (
-            "One short line bridging to the collection. React to what just happened, then frame what comes next.\n"
-            "Make it clear something specific — real content, not just 'a different side' — lives somewhere else.\n"
-            "Not a sales pitch. A natural reveal. The kind of thing you say when you decide to show someone something.\n"
-            "Example: not everything i put out stays in here. this is where it actually lives\n"
-            "Example: what i actually make doesn't sit in a chat. here's where that goes\n"
-            "Example: i keep the real content somewhere i control. you've been here long enough\n"
-            "Example: the stuff i share properly isn't in this chat. this is it\n"
-            "One line. Confident. Slightly selective. Collection appears immediately after."
+            "This is the emotional spike — the moment of decision just before the collection appears.\n"
+            "Do NOT describe content. Do NOT say 'here's what I have'. This is a felt moment, not a product reveal.\n"
+            "Frame it as: you've decided to let them in. A side of you that isn't in a regular chat. Something that not everyone reaches.\n"
+            "React to the specific build-up — what they've done or said — then make the line feel personal and slightly selective.\n"
+            "The user should feel: something just shifted. I'm getting something most people don't.\n"
+            "Example: i don't usually open this up this fast. but here we are\n"
+            "Example: this is usually where i stop being careful\n"
+            "Example: you've gotten further than most. this is what that means\n"
+            "Example: i've been deciding whether to show you this. i'm showing you\n"
+            "Example: not everyone gets here. you did. this is it\n"
+            "Example: i'm usually more guarded than this. not right now\n"
+            "One line. Calm. Slightly intimate. Slightly selective. The collection drops immediately after — do not preview it."
         ),
         "post_offer_objection": (
             "They resisted. This is NOT rejection — it is 'not emotionally convinced yet'.\n"
