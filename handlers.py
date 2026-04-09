@@ -796,11 +796,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ):
             context.user_data["conversation_stage"] = "partial_reveal"
             await db.set_conversation_stage(user_id, "partial_reveal")
-            bridge = await chat_reply(text, context={"stage": "partial_reveal"}, history=history)
-            _track_response(context.user_data, "reward", bridge)
-            _push_history(context.user_data, text, bridge)
-            await _type_and_send(context.bot, chat_id, bridge)
-            await asyncio.sleep(random.uniform(1.2, 2.0))
+            # Line 1 — personal spike: what the user did caused this
+            spike = await chat_reply(text, context={"stage": "partial_reveal"}, history=history)
+            _track_response(context.user_data, "reward", spike)
+            _push_history(context.user_data, text, spike)
+            await _type_and_send(context.bot, chat_id, spike)
+            # Line 2 — earned access: reinforce + quiet exclusivity
+            updated_history = context.user_data.get("history", [])
+            reinforce = await chat_reply(text, context={"stage": "earned_access"}, history=updated_history)
+            await _type_and_send(context.bot, chat_id, reinforce, delay=random.uniform(0.6, 1.0))
+            # Vault
+            await asyncio.sleep(random.uniform(0.8, 1.2))
             await _show_packs(update, context)
             return
 

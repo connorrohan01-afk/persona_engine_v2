@@ -428,6 +428,16 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "you stayed long enough. this is what that gets you",
             "you're the reason this is shifting right now",
         ],
+        "earned_access": [
+            "most people don't get this side of me this fast",
+            "you're further along than most people get in here",
+            "this doesn't happen in most conversations. it's happening in this one",
+            "not everyone gets access to this. you do",
+            "i don't usually go this far. you got me there",
+            "you're one of the few who's gotten here",
+            "most conversations don't reach this point",
+            "this isn't something i share everywhere. you earned it",
+        ],
         "post_offer_objection": [
             "okay. it's not for everyone. that's fine",
             "the ones who get it usually say that right before they look",
@@ -516,6 +526,18 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "Example: you pulled this out of me. that's not nothing\n"
             "Do NOT use generic lines. Do NOT describe the collection. Do NOT say 'check this out'.\n"
             "One line. Personal. Reactive. The collection drops immediately after."
+        ),
+        "earned_access": (
+            "This is the second line before the collection appears — reinforcement and exclusivity.\n"
+            "The first line already named what the user did. This line deepens the moment.\n"
+            "Acknowledge briefly that this isn't something you give everyone — subtle, not arrogant.\n"
+            "The user should feel: not everyone gets here. I'm one of the ones who did.\n"
+            "Example: most people don't get this side of me this fast\n"
+            "Example: you're further along than most people get in here\n"
+            "Example: this doesn't happen in most conversations. it's happening in this one\n"
+            "Example: not everyone gets access to this. you do\n"
+            "Example: i don't usually go this far. you got me there\n"
+            "One line. Quiet. Exclusive. The vault drops immediately after — don't preview it."
         ),
         "post_offer_objection": (
             "They resisted. This is NOT rejection — it is 'not emotionally convinced yet'.\n"
