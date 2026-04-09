@@ -90,7 +90,7 @@ _STAGE_TO_CATEGORY: dict[str, str] = {
     "micro_reward":  "pull",       # Stage 3: slight warmth, small payoff
     "tension_build": "tension",    # Stage 4: pull back, increase want
     "tease":         "curiosity",  # Stage 5: hint at what exists
-    "partial_reveal": "reward",    # Stage 6: close to unlocking
+    "partial_reveal": "curiosity",  # Stage 6: highest tension — pure escalation
     "post_offer":    "pull",       # hold interest, no spam
     "post_purchase": "pull",
 }
@@ -235,7 +235,7 @@ def _maybe_advance_stage(
             user_data["stage_turn_count"] = 0
             return "partial_reveal"
 
-    if intent in ("exit", "dry"):
+    if intent == "exit":
         return stage
 
     stage_turns = user_data.get("stage_turn_count", 0) + 1
@@ -478,7 +478,7 @@ def _track_response(user_data: dict, category: str, line: str) -> None:
 
     # Stall counter — resets on escalating categories, increments on flat/low-energy ones
     # "tension" and "pull" are escalating but library picks can still feel flat — only reset on LLM turns
-    _low_energy = {"dry", "challenge", "redirect", "repeat", "tension", "pull", "curiosity"}
+    _low_energy = {"dry", "repeat", "tension", "pull", "curiosity"}
     if category in _low_energy:
         user_data["stall_count"] = user_data.get("stall_count", 0) + 1
     else:
@@ -768,11 +768,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ── Normal response ───────────────────────────────────────────────────
         recent = context.user_data.get("recent_lines", [])
 
-        # Stall override — two consecutive low-energy replies → force escalation via LLM
-        if _is_stalling(context.user_data) and intent not in ("exit", "dry"):
-            force_stage = "tease" if stage in ("tease", "partial_reveal") else stage
-            reply = await chat_reply(text, context={"stage": force_stage}, history=history)
-            _track_response(context.user_data, "tension", reply)
+        # Stall override — two consecutive low-energy replies → advance stage and force LLM
+        if _is_stalling(context.user_data) and intent != "exit":
+            if stage in _STAGE_ORDER:
+                idx = _STAGE_ORDER.index(stage)
+                next_stage = _STAGE_ORDER[min(idx + 1, len(_STAGE_ORDER) - 1)]
+            else:
+                next_stage = "intrigue"
+            context.user_data["conversation_stage"] = next_stage
+            context.user_data["stage_turn_count"] = 0
+            reply = await chat_reply(text, context={"stage": next_stage}, history=history)
+            _track_response(context.user_data, next_stage, reply)
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
             return

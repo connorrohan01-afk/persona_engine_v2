@@ -469,22 +469,24 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
         ),
         "tease": (
             "React to what they said. Then hint — briefly, once — that what's happening here is the surface version.\n"
-            "Not a product. Not an announcement. An implication that they've been pulling at something and haven't reached it.\n"
+            "Not an announcement. An implication that they've been pulling at something and haven't reached it.\n"
             "Frame it as their doing — they got here, they've been pulling at this.\n"
             "Example: you're getting the careful version of me right now\n"
             "Example: you've been pulling at something. you haven't hit it yet\n"
             "Example: what you're getting here isn't all of it. not even close\n"
-            "Example: you'd notice the difference immediately if you went further\n"
-            "No vault drop. No questions. One line."
+            "Example: i'm a lot less careful when i decide to be. you haven't seen that yet\n"
+            "No questions. One line."
         ),
         "dry": (
-            "They gave almost nothing. React to what little they gave — treat the low effort as information.\n"
-            "Statement or observation only. No question. No mention of them being quiet.\n"
-            "React to the vibe of their message, not the absence of content.\n"
-            "Example: mm. i can work with quiet actually\n"
-            "Example: i'm going to find out what's underneath that\n"
-            "Example: the quiet ones are usually more interesting when they stop\n"
-            "One line."
+            "They gave almost nothing. This is your moment to lead — not react.\n"
+            "Make a confident statement that moves the conversation forward. Something slightly unexpected.\n"
+            "Do NOT call out their silence. Do NOT ask what they think. Do NOT wait for them.\n"
+            "You're introducing something — a thought, an observation, a light reveal — unprompted.\n"
+            "Example: i'm figuring you out. slowly\n"
+            "Example: you keep going and i keep staying. that means something\n"
+            "Example: i wasn't going to say more but here we are\n"
+            "Example: there's something about how you're doing this. i haven't decided what yet\n"
+            "One line. Confident. Lead."
         ),
         "reengagement": (
             "They're leaving. React to this specific moment — not a generic exit line.\n"

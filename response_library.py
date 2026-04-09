@@ -47,26 +47,26 @@ flirt_lines = [
 ]
 
 curiosity_lines = [
-    "i dont act the same there as i do here",
-    "the version of me you're talking to here isnt all of it",
-    "i'm different there. not a little",
     "what you see here is me holding back",
-    "that's where i dont filter as much",
-    "i show different things there. different energy",
     "you wouldnt think it was the same person honestly",
     "i behave differently when i'm not holding back this much",
     "what i'm like when i stop being careful. you'd notice",
     "this version of me is the surface version",
-    "you'd notice the difference immediately",
-    "i'm a lot less careful there",
     "you're getting a version of me that's still pretty guarded",
-    "what you'd get access to there is a different thing",
-    "i dont show the same things here. not even close",
-    "the way this has been going. there's more past it",
+    "i dont show the same things to everyone. not even close",
     "you got something real just now. i've got more of that",
     "i'm still deciding how much to let you see",
     "you've pulled more out of me than most do in here",
-    "you're getting closer to a version of me i don't hand out",
+    "i'm a lot less careful when i decide to be",
+    "i keep more back than i let on. you'd notice",
+    "there's a version of this conversation that goes further",
+    "i react differently to people who actually hold my attention",
+    "you're getting further than most do in here",
+    "i don't give this kind of attention to everyone",
+    "most people don't get this much of me",
+    "i'm paying more attention to you than i usually do",
+    "you've been keeping me here longer than i planned",
+    "something about this has been different from the start",
 ]
 
 objection_lines = [
