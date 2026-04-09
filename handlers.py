@@ -721,9 +721,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _track_response(context.user_data, "redirect", reply)
         _push_history(context.user_data, text, reply)
         await _type_and_send(context.bot, chat_id, reply)
-        # Meetup is a conversion trigger — show collection after the bridge line
-        await asyncio.sleep(random.uniform(1.5, 2.5))
-        await _show_packs(update, context)
+        # Meetup is a conversion trigger — show collection after bridge line if conversation has depth
+        if user.get("turn_count", 0) >= 3:
+            await asyncio.sleep(random.uniform(1.5, 2.5))
+            await _show_packs(update, context)
         return
 
     # ── Repeat test — call out the loop ──────────────────────────────────────
@@ -773,8 +774,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cooldown_threshold = 2 if (_is_buying_signal(text) or strong) else _PACK_INTRO_COOLDOWN
         cooldown_ok = (turn_count - last_offer_turn) >= cooldown_threshold
 
-        _trigger_direct    = _is_buying_signal(text) or strong
-        _trigger_question  = _is_asking_about_content(text) or _is_high_intent_question(text)
+        _trigger_direct    = (_is_buying_signal(text) or strong) and turn_count >= 2
+        _trigger_question  = (
+            (_is_asking_about_content(text) or _is_high_intent_question(text))
+            and turn_count >= 3
+        )
         _trigger_natural   = stage == "partial_reveal" and intent_level in ("mid", "high")
         _trigger_tease_yes = stage in ("tease", "partial_reveal") and _is_affirmative(text)
         _trigger_sustained = (
@@ -936,19 +940,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["offer_turn_count"] = offer_turns
 
         if offer_turns >= _OFFER_MAX_TURNS:
-            # Too long without clicking — drop back to warmup gracefully, no pressure
+            # Timed out — drop back to warmup without pressure
             context.user_data["offer_turn_count"] = 0
             await db.set_user_state(user_id, State.WARMUP)
-            reply = await chat_reply(text, context={"stage": "warmup"}, history=history)
+            reply = await chat_reply(text, context={"stage": "post_offer_objection"}, history=history)
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
             return
 
         if _is_negative(text):
-            # Hard no — back to warmup, leave door open
+            # Soft rejection — acknowledge, keep talking, don't repeat the offer
             context.user_data["offer_turn_count"] = 0
             await db.set_user_state(user_id, State.WARMUP)
-            reply = await chat_reply(text, context={"stage": "warmup"}, history=history)
+            reply = await chat_reply(text, context={"stage": "post_offer_objection"}, history=history)
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
             return

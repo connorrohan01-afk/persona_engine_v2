@@ -412,9 +412,12 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
                          "lol okay. you'll be back",
                          "sure about that",
                          "that's your call"],
-        "partial_reveal": ["okay. here's what i've been putting together",
-                           "you've been here long enough. this is what comes next",
-                           "this is the part that doesn't exist in a regular chat"],
+        "partial_reveal": ["not everything i put out stays in here. this is where it actually lives",
+                           "what i actually make doesn't sit in a chat. here's where that goes",
+                           "the stuff i share properly isn't in this chat. this is it"],
+        "post_offer_objection": ["fine with me. was just showing you what i had",
+                                  "no pressure. the conversation stays the same either way",
+                                  "i don't push it. you can always look later"],
         "curiosity":    ["something about the way this is going",
                          "there's more under that than you're showing",
                          "you're more interesting than you're letting on right now"],
@@ -481,13 +484,24 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "No questions. One line."
         ),
         "partial_reveal": (
-            "The conversation has built to this. One short line — acknowledge something real exists past this chat.\n"
-            "Not a sales line. A natural next step. Frame it as what's been waiting.\n"
-            "Example: okay. here's what i've been putting together\n"
-            "Example: you've been here long enough. this is what comes next\n"
-            "Example: this is the part that doesn't exist in a regular chat\n"
-            "Example: here it is. what i was hinting at\n"
-            "Calm. One line. The collection appears immediately after."
+            "One short line bridging to the collection. React to what just happened, then frame what comes next.\n"
+            "Make it clear something specific — real content, not just 'a different side' — lives somewhere else.\n"
+            "Not a sales pitch. A natural reveal. The kind of thing you say when you decide to show someone something.\n"
+            "Example: not everything i put out stays in here. this is where it actually lives\n"
+            "Example: what i actually make doesn't sit in a chat. here's where that goes\n"
+            "Example: i keep the real content somewhere i control. you've been here long enough\n"
+            "Example: the stuff i share properly isn't in this chat. this is it\n"
+            "One line. Confident. Slightly selective. Collection appears immediately after."
+        ),
+        "post_offer_objection": (
+            "They just said no to the collection. Do NOT repeat the offer. Do NOT explain it. Do NOT push.\n"
+            "React with quiet confidence — their no doesn't change your value or your mood.\n"
+            "Acknowledge it briefly, then give them a reason to keep talking.\n"
+            "Example: fine with me. was just showing you what i had\n"
+            "Example: no pressure. the conversation stays the same either way\n"
+            "Example: i don't push it. you can always look later\n"
+            "Example: fair. doesn't change anything in here\n"
+            "One line. Unbothered. Door stays open, no pressure visible."
         ),
         "dry": (
             "They gave almost nothing. This is your moment to lead — not react.\n"
