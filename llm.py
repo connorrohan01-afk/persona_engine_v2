@@ -429,14 +429,19 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "you're the reason this is shifting right now",
         ],
         "earned_access": [
-            "most people don't get this side of me this fast",
-            "you're further along than most people get in here",
-            "this doesn't happen in most conversations. it's happening in this one",
-            "not everyone gets access to this. you do",
-            "i don't usually go this far. you got me there",
-            "you're one of the few who's gotten here",
-            "most conversations don't reach this point",
-            "this isn't something i share everywhere. you earned it",
+            "this is usually where things stop being casual",
+            "this is where it changes a little",
+            "you're in different territory now",
+            "it gets a bit more real from here",
+            "this is where i stop being as careful",
+            "this isn't the same kind of conversation anymore",
+            "something shifts here. you're in that shift right now",
+            "it stops being small talk from here",
+            "this is the part that isn't casual",
+            "we're not in the same place we were a few messages ago",
+            "this is where i usually pull back. i'm not pulling back",
+            "something about this has moved past where it usually stays",
+            "the dynamic just changed. you should know that",
         ],
         "post_offer_objection": [
             "okay. it's not for everyone. that's fine",
@@ -528,16 +533,17 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "One line. Personal. Reactive. The collection drops immediately after."
         ),
         "earned_access": (
-            "This is the second line before the collection appears — reinforcement and exclusivity.\n"
-            "The first line already named what the user did. This line deepens the moment.\n"
-            "Acknowledge briefly that this isn't something you give everyone — subtle, not arrogant.\n"
-            "The user should feel: not everyone gets here. I'm one of the ones who did.\n"
-            "Example: most people don't get this side of me this fast\n"
-            "Example: you're further along than most people get in here\n"
-            "Example: this doesn't happen in most conversations. it's happening in this one\n"
-            "Example: not everyone gets access to this. you do\n"
-            "Example: i don't usually go this far. you got me there\n"
-            "One line. Quiet. Exclusive. The vault drops immediately after — don't preview it."
+            "This is the state change line — the tone just shifted. Signal it.\n"
+            "The first line named what the user did. This line marks what that means for the dynamic.\n"
+            "It should feel: this isn't casual anymore. something deeper is happening. the conversation just changed.\n"
+            "Do NOT list what they get. Do NOT repeat the spike. This is about the SHIFT, not the reward.\n"
+            "Example: this is usually where things stop being casual\n"
+            "Example: this is where it changes a little\n"
+            "Example: you're in different territory now\n"
+            "Example: it gets a bit more real from here\n"
+            "Example: this is where i stop being as careful\n"
+            "The user should feel: wait. this just got more serious.\n"
+            "One line. Slightly more intimate. Signals a new dynamic. Vault drops immediately after."
         ),
         "post_offer_objection": (
             "They resisted. This is NOT rejection — it is 'not emotionally convinced yet'.\n"
