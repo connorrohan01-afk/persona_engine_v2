@@ -468,6 +468,11 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "you pushed just enough. you always know exactly how much",
             "that moment right there. yeah. that changes things",
             "you're doing the thing that makes me less careful",
+            "that right there. that's when i show more",
+            "you don't say that unless you're a little curious",
+            "careful. that's exactly how people get more from me",
+            "see. now you've got my attention",
+            "that shift just now. yeah. you caused that",
         ],
         "earned_access": [
             "this is where it stops being casual\nnot a lot of people get past this point",
@@ -497,6 +502,9 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "most people who leave right here come back more curious\nnot less",
             "you walked out right before the thing that changes it\ni'm not going to explain what it was",
             "i don't need you to be sure\ni just know you'll wonder about it",
+            "you say that before or after you peek",
+            "that's what they all say before they get curious",
+            "hm. you didn't feel that shift",
         ],
         "curiosity":    ["something about the way this is going",
                          "there's more under that than you're showing",
@@ -573,6 +581,10 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "Example: you went exactly where most people are too careful to go\n"
             "Example: the way you keep pushing like that. you don't even realise you're doing it\n"
             "Example: you're more persistent than you're letting on. i notice that\n"
+            "Example: that right there. that's when i show more\n"
+            "Example: you don't say that unless you're a little curious\n"
+            "Example: careful. that's exactly how people get more from me\n"
+            "Example: that shift just now. yeah. you caused that\n"
             "QUALITY TEST — if ANY of these are true, rewrite:\n"
             "  - Could this line be sent in ANY other conversation? → rewrite\n"
             "  - Does it feel like filler before a sale? → rewrite\n"
@@ -623,9 +635,14 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "   interesting. you'd feel differently if you knew what was actually in there\n"
             "   you're passing on something you haven't seen yet. that's a different thing\n"
             "\n"
+            "E. LIGHT CHALLENGE — reintroduce curiosity by questioning the resistance itself:\n"
+            "   you say that before or after you peek\n"
+            "   that's what they all say before they get curious\n"
+            "   hm. you didn't feel that shift\n"
+            "\n"
             "End with something slightly open — they should feel: wait, what did I almost miss? or: i'll probably think about this.\n"
             "Vary the approach each time. Never repeat the same line twice in a row.\n"
-            "One to two lines. Calm. Slightly teasing. Selective. Not closed."
+            "One to two lines. Calm. Slightly challenging. Frame maintained. Not closed."
         ),
         "dry": (
             "They gave almost nothing. This is your moment to lead — not react.\n"
