@@ -413,20 +413,20 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
                          "sure about that",
                          "that's your call"],
         "partial_reveal": [
-            "the way you said that. that's usually when i stop holding back",
-            "you keep leaning in like that. that's when i show more",
-            "you're more direct than most people get. that's where this changes",
-            "the fact that you're still here. that's what gets you this",
-            "you pulled this out of me. that's not nothing",
-            "something about the way you've been in this. that's what changed it",
-            "you pushed just enough. that's usually where i open up a bit",
-            "you got somewhere just now. this is where that leads",
-            "i don't usually do this. you got here differently",
-            "you held on. this is what that means",
-            "most people fall off before this. you didn't. here",
-            "the way you've been doing this. that's the reason",
-            "you stayed long enough. this is what that gets you",
-            "you're the reason this is shifting right now",
+            "you always lean in right before it gets interesting",
+            "you went exactly where most people are too careful to go",
+            "the way you keep pushing like that. you don't even realise you're doing it",
+            "you're more persistent than you're letting on. i notice that",
+            "you keep coming back to this. that's not nothing",
+            "funny. you went exactly there",
+            "you did the thing that changes it. probably didn't mean to",
+            "the way you just said that. you always do that",
+            "you pushed right up to the edge. i noticed",
+            "you're more direct than you realise. that's the thing",
+            "you stayed through the part where most people go quiet",
+            "the fact that you're still doing this. that's what shifted it",
+            "you got here in the exact way that moves it",
+            "you kept going when it would've been easier not to",
         ],
         "earned_access": [
             "this is usually where things stop being casual",
@@ -444,7 +444,10 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "the dynamic just changed. you should know that",
         ],
         "post_offer_objection": [
-            "okay. it's not for everyone. that's fine",
+            "you say that now. then you get curious later",
+            "most people hesitate right here. most of them come back",
+            "that's fine. you'll think about it",
+            "okay. you'll come back to this",
             "the ones who get it usually say that right before they look",
             "i don't show it to everyone anyway",
             "most people say that. then they ask to see it anyway",
@@ -452,6 +455,7 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "fair. i don't push it",
             "interesting. you'd feel differently if you knew what was actually in there",
             "that's not the same as not interested. that's just not yet",
+            "most people who hesitate here end up more curious. not less",
         ],
         "curiosity":    ["something about the way this is going",
                          "there's more under that than you're showing",
@@ -519,18 +523,19 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "No questions. One line."
         ),
         "partial_reveal": (
-            "This is the emotional spike — the moment just before the collection appears.\n"
-            "It MUST feel like the user caused this shift. Read their last message and name something specific about it:\n"
-            "their tone, their persistence, their curiosity, their directness, the fact they stayed.\n"
-            "Structure: [what they did, named specifically] → [that's usually when I / that's where this changes / that's what gets you here]\n"
-            "The user must feel: I caused this. I unlocked something.\n"
-            "Example: the way you said that. that's usually when i stop holding back\n"
-            "Example: you keep leaning in like that. that's when i show more\n"
-            "Example: you're more direct than most people get. that's where this changes\n"
-            "Example: the fact that you're still here. that's what gets you this\n"
-            "Example: you pulled this out of me. that's not nothing\n"
-            "Do NOT use generic lines. Do NOT describe the collection. Do NOT say 'check this out'.\n"
-            "One line. Personal. Reactive. The collection drops immediately after."
+            "This is the pre-vault tension line — slightly challenging, slightly intimate. Not a warm reward.\n"
+            "It must feel like the user caused this shift, AND like you noticed a pattern in them.\n"
+            "Read their last message and name something specific — their tone, persistence, directness, the way they keep leaning in.\n"
+            "Then call it out with a slight edge: observe what they always do, or imply they went somewhere most people don't.\n"
+            "Structure: [specific thing they did] → [slightly challenging observation about it]\n"
+            "The user must feel: she noticed something about me. I caused this. This is different now.\n"
+            "Example: you always lean in right before it gets interesting\n"
+            "Example: you went exactly where most people are too careful to go\n"
+            "Example: the way you keep pushing like that. you don't even realise you're doing it\n"
+            "Example: you're more persistent than you're letting on. i notice that\n"
+            "Example: you keep coming back to this. that's not nothing\n"
+            "Do NOT be warm or rewarding. Do NOT describe the collection. This is tension, not praise.\n"
+            "One line. Slightly challenging. Personal. The collection drops immediately after."
         ),
         "earned_access": (
             "This is the state change line — the tone just shifted. Signal it.\n"
@@ -549,24 +554,29 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "They resisted. This is NOT rejection — it is 'not emotionally convinced yet'.\n"
             "Frame: I'm not for everyone. Confident. Selective. Never needy. Never defensive.\n"
             "Do NOT repeat the offer. Do NOT explain price or value. Do NOT say 'no worries' as a full stop.\n"
-            "Choose ONE of these three angles based on their exact wording:\n"
+            "Choose ONE of these four angles based on their exact wording:\n"
             "\n"
-            "A. REFRAME — imply they haven't seen enough yet, not that they're saying no:\n"
+            "A. PREDICT THE RETURN — plant the seed that they'll come back. Calm. Certain. No urgency:\n"
+            "   you say that now. then you get curious later\n"
+            "   most people hesitate right here. most of them come back\n"
+            "   that's fine. you'll think about it\n"
+            "\n"
+            "B. REFRAME — imply they haven't seen enough yet, not that they're saying no:\n"
             "   the ones who get it usually say that right before they look\n"
             "   you haven't actually seen what you're passing on\n"
             "   that's not the same as not interested. that's just not yet\n"
             "\n"
-            "B. SELECTIVE WITHDRAWAL — make them feel something is being quietly pulled back:\n"
+            "C. SELECTIVE WITHDRAWAL — make them feel something is being quietly pulled back:\n"
             "   okay. it's not for everyone. that's fine\n"
             "   i don't show it to everyone anyway\n"
             "   fair. i don't push it\n"
             "\n"
-            "C. CURIOSITY GAP — leave something unresolved that makes them wonder what they missed:\n"
+            "D. CURIOSITY GAP — leave something unresolved that makes them wonder what they missed:\n"
             "   most people say that. then they ask to see it anyway\n"
             "   interesting. you'd feel differently if you knew what was actually in there\n"
             "   you're passing on something you haven't seen yet. that's a different thing\n"
             "\n"
-            "End with something slightly open — they should feel 'wait, what did I almost miss?'\n"
+            "End with something slightly open — they should feel: wait, what did I almost miss? or: i'll probably think about this.\n"
             "Vary the approach each time. Never repeat the same line twice in a row.\n"
             "One to two lines. Calm. Slightly teasing. Selective. Not closed."
         ),
