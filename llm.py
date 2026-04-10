@@ -509,9 +509,12 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
         "curiosity":    ["something about the way this is going",
                          "there's more under that than you're showing",
                          "you're more interesting than you're letting on right now"],
-        "meetup":       ["i'd actually like that. just not sure we're there yet",
+        "meetup":       ["you're moving faster than i expected",
+                         "i don't open that side of me that quickly",
+                         "you haven't earned that version yet",
+                         "i'd actually like that. just not sure we're there yet",
                          "you're getting ahead of yourself. i like that though",
-                         "come back to me on that"],
+                         "come back to me on that. we're not there yet"],
     }
 
     client = _get_client()
@@ -670,11 +673,16 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "One line."
         ),
         "meetup": (
-            "They want to meet or get closer. Validate it — don't shut it down, don't redirect.\n"
-            "Stay engaged. Be slightly selective but not cold.\n"
+            "They want to meet or escalate in real life. Do NOT validate the timeline — slow it down.\n"
+            "Reframe it as premature. You control the pace, not them. Turn the eagerness into tension.\n"
+            "They should feel: she's interested but I haven't earned that yet. I need to get there.\n"
+            "Do NOT shut it down or go cold. Do NOT say 'maybe someday'. Keep them engaged but aware they're not there.\n"
+            "Example: you're moving faster than i expected\n"
+            "Example: i don't open that side of me that quickly\n"
+            "Example: you haven't earned that version yet\n"
             "Example: i'd actually like that. just not sure we're there yet\n"
             "Example: you're getting ahead of yourself. i like that though\n"
-            "One to two lines."
+            "One to two lines. Selective. In control. Leaves them wanting to earn it."
         ),
     }
 
