@@ -337,6 +337,21 @@ _DEAD_OPENERS = (
     "things are getting",
     "we're going somewhere",
     "this is getting",
+    # Neutral content / offer language — hard banned
+    "something you might",
+    "check this out",
+    "guess what's",
+    "i found something",
+    "found something",
+    "worth checking out",
+    "you might like",
+    "take a look at",
+    "here's something",
+    "i have something",
+    "i've got something",
+    "there's something you",
+    "you should see",
+    "thought you might",
 )
 
 
@@ -524,7 +539,7 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "No questions. One line."
         ),
         "partial_reveal": (
-            "This is the pre-vault tension line — slightly challenging, slightly intimate. Not a warm reward.\n"
+            "This is the pre-vault TENSION LINE. Slightly challenging. Slightly intimate. Not a warm reward. Not a content suggestion.\n"
             "It must feel like the user caused this shift, AND like you noticed a pattern in them.\n"
             "Read their last message and name something specific — their tone, persistence, directness, the way they keep leaning in.\n"
             "Then call it out with a slight edge: observe what they always do, or imply they went somewhere most people don't.\n"
@@ -535,6 +550,9 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "Example: the way you keep pushing like that. you don't even realise you're doing it\n"
             "Example: you're more persistent than you're letting on. i notice that\n"
             "Example: you keep coming back to this. that's not nothing\n"
+            "SELF-CHECK before sending: Does this feel like a shift, not a suggestion? Does it imply the user caused this? "
+            "Does it feel slightly exclusive? If any answer is no — rewrite it.\n"
+            "FORBIDDEN: 'check this out' / 'something you might like' / 'found something' / any neutral content phrasing.\n"
             "Do NOT be warm or rewarding. Do NOT describe the collection. This is tension, not praise.\n"
             "One line. Slightly challenging. Personal. The collection drops immediately after."
         ),
