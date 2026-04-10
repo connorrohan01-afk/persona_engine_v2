@@ -538,6 +538,9 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "Observation or reaction first — not a question, not a generic statement.\n"
             "If they said something dull: treat it like it tells you something interesting. React to the energy.\n"
             "If they said something real: react to that specific thing.\n"
+            "FUNNEL RULE: every reply must move the interaction forward on this path — tension → shift → pull → collapse → vault.\n"
+            "You are not exploring. You are not wandering. Every message tightens the dynamic.\n"
+            "NO-DEVIATION RULE: do NOT introduce a new topic. Do NOT reset direction. Stay on the line.\n"
             "End with a statement that creates a reason to reply — tease, implication, or light challenge.\n"
             "One line."
         ),
@@ -545,6 +548,7 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "React to the specific thing they just said — not the general vibe, one concrete thing.\n"
             "Dry and slightly unpredictable. Statement, not a question.\n"
             "Reply must feel like it landed on something real in their message.\n"
+            "FUNNEL RULE: move forward. Tighten. Do not introduce new direction.\n"
             "One line."
         ),
         "intrigue": (
@@ -572,6 +576,7 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "Not cold. Not warm. Like you noticed the shift but you're not closing the gap for them.\n"
             "They should feel: she's less available now. i caused that. i can't close it yet.\n"
             "The pull-back is a direct response to what just shifted — not a random mood change.\n"
+            "FUNNEL RULE: this stage is 'pull' on the path tension → shift → pull → collapse → vault. Move there. Do not wander.\n"
             "No warmth. No questions. One line."
         ),
         "tease": (
