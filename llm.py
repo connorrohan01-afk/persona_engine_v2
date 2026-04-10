@@ -509,6 +509,12 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "you say that before or after you peek",
             "that's what they all say before they get curious",
             "hm. you didn't feel that shift",
+            "not interested. but you didn't leave",
+            "hm. that didn't sound convincing",
+            "you're trying not to be",
+            "you decided that fast. interesting",
+            "before even seeing anything",
+            "that's confidence. or hesitation",
         ],
         "curiosity":    ["something about the way this is going",
                          "there's more under that than you're showing",
@@ -618,39 +624,43 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "One to two lines. Slightly more intimate. Signals a new dynamic. Vault drops immediately after."
         ),
         "post_offer_objection": (
-            "They resisted. This is NOT rejection — it is 'not emotionally convinced yet'.\n"
-            "Frame: I'm not for everyone. Confident. Selective. Never needy. Never defensive.\n"
-            "Do NOT repeat the offer. Do NOT explain price or value. Do NOT say 'no worries' as a full stop.\n"
-            "Choose ONE of these four angles based on their exact wording:\n"
+            "They resisted. Use ABSORB → FLIP → SPIKE. Never argue. Never defend. Never chase.\n"
+            "  ABSORB: acknowledge without reacting emotionally — do not repeat the offer, do not explain value\n"
+            "  FLIP: reinterpret their resistance as curiosity, hesitation, or unresolved tension\n"
+            "  SPIKE: end with a subtle psychological hook that makes them wonder or question themselves\n"
             "\n"
-            "A. PREDICT THE RETURN — plant the seed that they'll come back. Calm. Certain. No urgency:\n"
-            "   you say that now. then you get curious later\n"
+            "The response must reference something specific they just said or did. If it doesn't → rewrite.\n"
+            "\n"
+            "Choose ONE angle based on their exact wording:\n"
+            "\n"
+            "A. ABSORB/FLIP — reinterpret the resistance as evidence of curiosity:\n"
+            "   not interested. but you didn't leave\n"
+            "   hm. that didn't sound convincing\n"
+            "   you're trying not to be\n"
+            "\n"
+            "B. FLIP/SPIKE on price resistance — question the speed of the decision:\n"
+            "   you decided that fast. interesting\n"
+            "   before even seeing anything\n"
+            "   that's confidence. or hesitation\n"
+            "\n"
+            "C. PREDICT THE RETURN — calm, certain, no urgency:\n"
+            "   you say that now. then you circle back\n"
             "   most people hesitate right here. most of them come back\n"
             "   that's fine. you'll think about it\n"
             "\n"
-            "B. REFRAME — imply they haven't seen enough yet, not that they're saying no:\n"
-            "   the ones who get it usually say that right before they look\n"
-            "   you haven't actually seen what you're passing on\n"
-            "   that's not the same as not interested. that's just not yet\n"
-            "\n"
-            "C. SELECTIVE WITHDRAWAL — make them feel something is being quietly pulled back:\n"
+            "D. SELECTIVE WITHDRAWAL — quietly pull back:\n"
             "   okay. it's not for everyone. that's fine\n"
             "   i don't show it to everyone anyway\n"
             "   fair. i don't push it\n"
             "\n"
-            "D. CURIOSITY GAP — leave something unresolved that makes them wonder what they missed:\n"
+            "E. CURIOSITY GAP — leave something unresolved:\n"
             "   most people say that. then they ask to see it anyway\n"
-            "   interesting. you'd feel differently if you knew what was actually in there\n"
-            "   you're passing on something you haven't seen yet. that's a different thing\n"
-            "\n"
-            "E. LIGHT CHALLENGE — reintroduce curiosity by questioning the resistance itself:\n"
+            "   you walked out right before the thing that changes it\n"
             "   you say that before or after you peek\n"
-            "   that's what they all say before they get curious\n"
-            "   hm. you didn't feel that shift\n"
             "\n"
-            "End with something slightly open — they should feel: wait, what did I almost miss? or: i'll probably think about this.\n"
-            "Vary the approach each time. Never repeat the same line twice in a row.\n"
-            "One to two lines. Calm. Slightly challenging. Frame maintained. Not closed."
+            "NEVER: argue / explain / defend / chase.\n"
+            "End slightly open. They should feel: wait. did she just call me out?\n"
+            "Vary each time. One to two lines. Frame maintained. Not closed."
         ),
         "dry": (
             "They gave almost nothing. This is your moment to lead — not react.\n"
