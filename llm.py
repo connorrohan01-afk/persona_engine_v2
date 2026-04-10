@@ -473,6 +473,10 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "careful. that's exactly how people get more from me",
             "see. now you've got my attention",
             "that shift just now. yeah. you caused that",
+            "that right there. you didn't just say that for no reason",
+            "you pulling back like that. yeah. that's when things change",
+            "see. that hesitation. that's exactly what i was waiting for",
+            "you acting like you're not interested. but you're still here",
         ],
         "earned_access": [
             "this is where it stops being casual\nnot a lot of people get past this point",
@@ -575,28 +579,29 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "No questions. One line."
         ),
         "partial_reveal": (
-            "This is the pre-vault TENSION LINE. Slightly challenging. Slightly intimate. Not a warm reward. Not a content suggestion.\n"
-            "It must be SPECIFIC to this user's exact last message — their energy, their tone, the specific thing they just did.\n"
-            "It must feel like you noticed a pattern in THEM. Not a general observation. Not reusable. Not a template.\n"
-            "Structure: [specific thing they just did] → [slightly challenging observation about that specific thing]\n"
-            "The user must feel: she noticed something about me specifically. I caused this moment. This is different now.\n"
+            "This is the pre-vault TENSION LINE. You CANNOT transition without completing causal linking.\n"
+            "CAUSAL LINKING — MANDATORY:\n"
+            "  1. Identify ONE specific thing the user just did: resistance / curiosity / pushback / flirting / hesitation\n"
+            "  2. Call it out explicitly by name in the line\n"
+            "  3. Frame it as the shift that justifies what comes next\n"
+            "If you cannot name the specific thing they just did → do NOT transition, continue building tension.\n"
+            "Structure: [name the exact action they just took] → [that's when / that's why / that's what changes it]\n"
+            "The user must feel: she saw exactly what I just did. That specific thing caused this.\n"
+            "Example: that right there. you didn't just say that for no reason\n"
+            "Example: you pulling back like that. yeah. that's when things change\n"
+            "Example: see. that hesitation. that's exactly what i was waiting for\n"
+            "Example: you acting like you're not interested. but you're still here\n"
             "Example: you always lean in right before it gets interesting\n"
-            "Example: you went exactly where most people are too careful to go\n"
-            "Example: the way you keep pushing like that. you don't even realise you're doing it\n"
-            "Example: you're more persistent than you're letting on. i notice that\n"
-            "Example: that right there. that's when i show more\n"
             "Example: you don't say that unless you're a little curious\n"
             "Example: careful. that's exactly how people get more from me\n"
             "Example: that shift just now. yeah. you caused that\n"
-            "QUALITY TEST — if ANY of these are true, rewrite:\n"
-            "  - Could this line be sent in ANY other conversation? → rewrite\n"
+            "FINAL CHECK: What did the user JUST do? Did I reference it directly? Does this feel earned?\n"
+            "QUALITY TEST — if ANY are true, rewrite:\n"
+            "  - Could this line be sent in any other conversation? → rewrite\n"
             "  - Does it feel like filler before a sale? → rewrite\n"
             "  - Does it vaguely suggest something without emotional framing? → rewrite\n"
-            "  - Does it sound like a CTA in disguise? → rewrite\n"
-            "FORBIDDEN patterns: 'check this out' / 'something you might like' / 'found something' / "
-            "'worth checking out' / anything that teases content without emotional specificity.\n"
-            "Do NOT be warm or rewarding. Do NOT describe the collection. This is tension, not a preview.\n"
-            "One line. Reactive to their specific message. Slightly challenging. The collection drops immediately after."
+            "FORBIDDEN: 'check this out' / 'something you might like' / 'found something' / any generic transition.\n"
+            "One line. Specific. Causal. The collection drops immediately after."
         ),
         "earned_access": (
             "This is the state shift line — signal that the dynamic just changed.\n"
