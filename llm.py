@@ -371,7 +371,27 @@ def _sanitize_output(text: str) -> str:
     return text.strip()
 
 
-def _is_dead_response(text: str) -> bool:
+_VAULT_BANNED_SUBSTRINGS = (
+    "something interesting",
+    "something you might",
+    "check this out",
+    "worth checking out",
+    "something waiting",
+    "found something",
+    "you might like",
+    "take a look",
+    "here's something",
+    "i have something",
+    "i've got something",
+    "thought you might",
+    "you should see",
+    "guess what",
+)
+
+_VAULT_STAGES = {"partial_reveal", "earned_access"}
+
+
+def _is_dead_response(text: str, stage: str = "") -> bool:
     """Return True if the response is a forbidden dead-end reply."""
     stripped = text.strip().lower().rstrip(".,!?")
     # Exact full match
@@ -385,6 +405,11 @@ def _is_dead_response(text: str) -> bool:
     sentence_count = len(re.findall(r'[.!?]+', text.strip()))
     if sentence_count > 3:
         return True
+    # Vault stages: additional check for neutral/offer-style phrasing
+    if stage in _VAULT_STAGES:
+        lowered = text.lower()
+        if any(banned in lowered for banned in _VAULT_BANNED_SUBSTRINGS):
+            return True
     return False
 
 
@@ -664,17 +689,31 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
     try:
         result = _sanitize_output(await _call(temperature=0.9))
 
-        if _is_dead_response(result):
+        if _is_dead_response(result, stage):
             logger.debug("Dead response detected (%r), retrying stage=%s", result, stage)
-            retry_prompt = (
-                f"{user_prompt}\n\n"
-                "Your previous reply was wrong. Rewrite it completely.\n"
-                "Rules: no lifestyle questions, no interview questions, no warm openers, "
-                "no paragraphs, no exclamation, no 'that's so interesting', no 'i'd love to', "
-                "no customer service tone. Short, sharp, in character. "
-                "Tease, observe, or imply. Do not ask about their life. "
-                "One line max. No quotation marks."
-            )
+            if stage in _VAULT_STAGES:
+                retry_prompt = (
+                    f"{user_prompt}\n\n"
+                    "Your previous reply failed the vault audit. Rewrite it completely.\n"
+                    "SELF-CHECK: (1) Does this feel like a state shift, not a suggestion? "
+                    "(2) Does it imply the user caused this moment? "
+                    "(3) Does it feel slightly exclusive or earned? "
+                    "If any answer is no — rewrite.\n"
+                    "FORBIDDEN: 'check this out' / 'something you might like' / 'found something' / "
+                    "'worth checking out' / any neutral content phrasing.\n"
+                    "This must feel like tension and a shift in dynamic. Not an offer. Not a pitch.\n"
+                    "One line. No quotation marks."
+                )
+            else:
+                retry_prompt = (
+                    f"{user_prompt}\n\n"
+                    "Your previous reply was wrong. Rewrite it completely.\n"
+                    "Rules: no lifestyle questions, no interview questions, no warm openers, "
+                    "no paragraphs, no exclamation, no 'that's so interesting', no 'i'd love to', "
+                    "no customer service tone. Short, sharp, in character. "
+                    "Tease, observe, or imply. Do not ask about their life. "
+                    "One line max. No quotation marks."
+                )
             messages_retry = [
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 *history_slice,
