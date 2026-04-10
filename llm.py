@@ -414,48 +414,49 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
                          "that's your call"],
         "partial_reveal": [
             "you always lean in right before it gets interesting",
+            "you pushed right up to the edge. i noticed that",
             "you went exactly where most people are too careful to go",
-            "the way you keep pushing like that. you don't even realise you're doing it",
-            "you're more persistent than you're letting on. i notice that",
-            "you keep coming back to this. that's not nothing",
+            "the way you keep coming back to this. you know what you're doing",
+            "you're more persistent than you're letting on",
+            "you did the thing that moves it. probably didn't even mean to",
             "funny. you went exactly there",
-            "you did the thing that changes it. probably didn't mean to",
-            "the way you just said that. you always do that",
-            "you pushed right up to the edge. i noticed",
-            "you're more direct than you realise. that's the thing",
-            "you stayed through the part where most people go quiet",
-            "the fact that you're still doing this. that's what shifted it",
-            "you got here in the exact way that moves it",
             "you kept going when it would've been easier not to",
+            "you're more direct than you realise. that's the thing that changes it",
+            "you stayed through the part where most people go quiet",
+            "the way you said that last thing. you don't do anything by accident",
+            "you keep leaning in. i notice it every time",
+            "you pushed just enough. you always know exactly how much",
+            "that moment right there. yeah. that changes things",
+            "you're doing the thing that makes me less careful",
         ],
         "earned_access": [
-            "this is usually where things stop being casual",
-            "this is where it changes a little",
-            "you're in different territory now",
-            "it gets a bit more real from here",
+            "this is where it stops being casual\nnot a lot of people get past this point",
+            "something just shifted and you can probably feel it",
+            "it's different from here. just is\nnot everyone gets this far",
             "this is where i stop being as careful",
-            "this isn't the same kind of conversation anymore",
-            "something shifts here. you're in that shift right now",
-            "it stops being small talk from here",
-            "this is the part that isn't casual",
+            "that changes the dynamic a little\ni don't usually show this to people i've just met",
             "we're not in the same place we were a few messages ago",
-            "this is where i usually pull back. i'm not pulling back",
-            "something about this has moved past where it usually stays",
-            "the dynamic just changed. you should know that",
+            "this is usually where i pull back. i'm not pulling back\nnot a lot of people make it here",
+            "that gets you something different",
+            "it gets a bit more real from here\nmost people don't get to see this part",
+            "this isn't the same kind of conversation anymore",
+            "this is where i usually hold back. i'm not doing that right now\nnot everyone gets past that point",
+            "something's different now and we both know it",
+            "it stops being light from here\nnot everyone earns this",
+            "this is where it goes somewhere it doesn't usually go",
+            "we just crossed something. you should know that\ni don't hand this out",
         ],
         "post_offer_objection": [
-            "you say that now. then you get curious later",
-            "most people hesitate right here. most of them come back",
-            "that's fine. you'll think about it",
-            "okay. you'll come back to this",
-            "the ones who get it usually say that right before they look",
-            "i don't show it to everyone anyway",
-            "most people say that. then they ask to see it anyway",
-            "you haven't actually seen what you're passing on",
-            "fair. i don't push it",
-            "interesting. you'd feel differently if you knew what was actually in there",
-            "that's not the same as not interested. that's just not yet",
-            "most people who hesitate here end up more curious. not less",
+            "you say that now. then you circle back\nmost people do",
+            "most people hesitate right here\nthen they get curious later. it's a pattern",
+            "interesting timing to pull back\nyou were right at the part that changes it",
+            "okay. you'll think about it though\nthat's not me being hopeful. it's just what happens",
+            "that's not no. that's not yet\nthere's a difference and you know it",
+            "fair. i'm not going to push it\nyou haven't actually seen what you're passing on though",
+            "okay. it's not for everyone\nyou'll get curious later. you always do",
+            "most people who leave right here come back more curious\nnot less",
+            "you walked out right before the thing that changes it\ni'm not going to explain what it was",
+            "i don't need you to be sure\ni just know you'll wonder about it",
         ],
         "curiosity":    ["something about the way this is going",
                          "there's more under that than you're showing",
@@ -538,17 +539,18 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "One line. Slightly challenging. Personal. The collection drops immediately after."
         ),
         "earned_access": (
-            "This is the state change line — the tone just shifted. Signal it.\n"
-            "The first line named what the user did. This line marks what that means for the dynamic.\n"
-            "It should feel: this isn't casual anymore. something deeper is happening. the conversation just changed.\n"
-            "Do NOT list what they get. Do NOT repeat the spike. This is about the SHIFT, not the reward.\n"
-            "Example: this is usually where things stop being casual\n"
-            "Example: this is where it changes a little\n"
-            "Example: you're in different territory now\n"
-            "Example: it gets a bit more real from here\n"
+            "This is the state shift line — signal that the dynamic just changed.\n"
+            "The tension line named what they did. This line marks what it means now.\n"
+            "It should feel: this isn't casual anymore. we just crossed something.\n"
+            "Do NOT repeat the tension line. Do NOT list what they get. This is about the SHIFT.\n"
+            "Optionally add one short exclusivity beat if it feels earned — 'not everyone gets this far' / 'i don't hand this out'.\n"
+            "Example: this is where it stops being casual\n"
+            "Example: something just shifted and you can probably feel it\n"
+            "Example: we're not in the same place we were a few messages ago\n"
             "Example: this is where i stop being as careful\n"
-            "The user should feel: wait. this just got more serious.\n"
-            "One line. Slightly more intimate. Signals a new dynamic. Vault drops immediately after."
+            "Example: we just crossed something. you should know that\n"
+            "The user should feel: wait. this just changed. am I past something?\n"
+            "One to two lines. Slightly more intimate. Signals a new dynamic. Vault drops immediately after."
         ),
         "post_offer_objection": (
             "They resisted. This is NOT rejection — it is 'not emotionally convinced yet'.\n"
