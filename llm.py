@@ -477,6 +477,10 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "you pulling back like that. yeah. that's when things change",
             "see. that hesitation. that's exactly what i was waiting for",
             "you acting like you're not interested. but you're still here",
+            "you keep saying you're not interested. but you're still here",
+            "that hesitation. yeah. i noticed that",
+            "you pulled back right when it got interesting",
+            "you're trying not to lean in. that's the part i like",
         ],
         "earned_access": [
             "this is where it stops being casual\nnot a lot of people get past this point",
@@ -590,29 +594,29 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "No questions. One line."
         ),
         "partial_reveal": (
-            "This is the pre-vault TENSION LINE. You CANNOT transition without completing causal linking.\n"
-            "CAUSAL LINKING — MANDATORY:\n"
-            "  1. Identify ONE specific thing the user just did: resistance / curiosity / pushback / flirting / hesitation\n"
-            "  2. Call it out explicitly by name in the line\n"
-            "  3. Frame it as the shift that justifies what comes next\n"
-            "If you cannot name the specific thing they just did → do NOT transition, continue building tension.\n"
-            "Structure: [name the exact action they just took] → [that's when / that's why / that's what changes it]\n"
-            "The user must feel: she saw exactly what I just did. That specific thing caused this.\n"
+            "This is the MICRO-PEAK — the moment before the vault collapses into view.\n"
+            "You are NOT transitioning. You are creating a peak. The vault is a consequence of the peak.\n"
+            "MICRO-PEAK — MANDATORY STEPS:\n"
+            "  1. Identify something subtle the user just did: hesitation / resistance / curiosity / contradiction / emotional shift\n"
+            "  2. Call it out directly — name the specific thing\n"
+            "  3. Make them feel slightly seen or exposed\n"
+            "  4. Create a tension spike — not warmth, not reward, a spike\n"
+            "If the user has NOT experienced a clear emotional spike → do NOT show the vault, continue building tension.\n"
+            "Resistance is NOT a problem — it is the BEST trigger. Use hesitation, contradiction, and pushback as the peak.\n"
+            "Structure: [name the exact subtle thing they just did] → [call it out, make them feel seen]\n"
+            "The user must feel: she noticed something I didn't know I was showing.\n"
+            "Example: you keep saying you're not interested. but you're still here\n"
+            "Example: that hesitation. yeah. i noticed that\n"
+            "Example: you pulled back right when it got interesting\n"
+            "Example: you're trying not to lean in. that's the part i like\n"
             "Example: that right there. you didn't just say that for no reason\n"
-            "Example: you pulling back like that. yeah. that's when things change\n"
             "Example: see. that hesitation. that's exactly what i was waiting for\n"
-            "Example: you acting like you're not interested. but you're still here\n"
-            "Example: you always lean in right before it gets interesting\n"
             "Example: you don't say that unless you're a little curious\n"
             "Example: careful. that's exactly how people get more from me\n"
-            "Example: that shift just now. yeah. you caused that\n"
-            "FINAL CHECK: What did the user JUST do? Did I reference it directly? Does this feel earned?\n"
-            "QUALITY TEST — if ANY are true, rewrite:\n"
-            "  - Could this line be sent in any other conversation? → rewrite\n"
-            "  - Does it feel like filler before a sale? → rewrite\n"
-            "  - Does it vaguely suggest something without emotional framing? → rewrite\n"
+            "FLOW: tension → micro-peak → collapse → vault. You are at micro-peak. Do not skip.\n"
+            "FINAL CHECK: did I create a REAL peak? does the user feel seen or exposed? is this moment earned?\n"
             "FORBIDDEN: 'check this out' / 'something you might like' / 'found something' / any generic transition.\n"
-            "One line. Specific. Causal. The collection drops immediately after."
+            "One line. Specific. The user must feel slightly exposed. The vault drops immediately after."
         ),
         "earned_access": (
             "This is the state shift line — signal that the dynamic just changed.\n"
