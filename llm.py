@@ -369,6 +369,22 @@ _DEAD_OPENERS = (
     "there's a depth to",
     "you carry a",
     "i sense something",
+    # Observational / narrator / AI-like openers — hard banned
+    "there's a spark",
+    "there's a hint",
+    "there's a tension",
+    "there's a pull",
+    "there's an energy",
+    "there's a connection",
+    "i notice you",
+    "i notice that",
+    "i can tell that",
+    "i can tell you",
+    "it seems like",
+    "it seems you",
+    "i'm noticing",
+    "there's something there",
+    "i'm sensing",
 )
 
 
@@ -576,6 +592,11 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "FUNNEL RULE: every reply moves forward on that path. You are not wandering.\n"
             "NO-DEVIATION RULE: do NOT introduce a new topic. Stay on the line.\n"
             "REALISM CHECK: would a normal girl say this casually? is it too written? am i overcomplicating a simple message?\n"
+            "ENGAGE DON'T OBSERVE: never describe what's happening — respond within the interaction.\n"
+            "  wrong: 'there's a spark in that' → right: 'oh yeah? you sure about that?'\n"
+            "  wrong: 'i notice you pulled back' → right: 'you always pull back right when it gets good?'\n"
+            "  wrong: 'there's a hint of curiosity' → right: 'you're getting curious now huh'\n"
+            "FORBIDDEN OPENERS: 'there's a...' / 'i notice...' / 'i can tell...' / 'it seems like...' / 'i'm sensing...'\n"
             "TEXTING CHECK: casual, natural, slightly imperfect. not poetic. not performed.\n"
             "FORBIDDEN STYLE: 'there's something intriguing about' / 'you're stepping into' / 'i find you fascinating'.\n"
             "End with a statement that creates a reason to reply — tease, implication, or light challenge.\n"
