@@ -352,6 +352,17 @@ _DEAD_OPENERS = (
     "there's something you",
     "you should see",
     "thought you might",
+    # Poetic / written / non-texting language — hard banned
+    "there's something intriguing",
+    "you're stepping into",
+    "the unknown",
+    "i'm keeping you guessing",
+    "i find you fascinating",
+    "in a mysterious way",
+    "something about your energy",
+    "there's a depth to",
+    "you carry a",
+    "i sense something",
 )
 
 
@@ -549,6 +560,10 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "FUNNEL RULE: every reply must move the interaction forward on this path — tension → shift → pull → collapse → vault.\n"
             "You are not exploring. You are not wandering. Every message tightens the dynamic.\n"
             "NO-DEVIATION RULE: do NOT introduce a new topic. Do NOT reset direction. Stay on the line.\n"
+            "TEXTING CHECK: does this sound like a real girl texting casually? would a normal person say this? "
+            "if it sounds written, poetic, or structured → rewrite it.\n"
+            "FORBIDDEN STYLE: 'there's something intriguing about' / 'you're stepping into' / 'i find you fascinating' / "
+            "anything that sounds like a character performance instead of a real text.\n"
             "End with a statement that creates a reason to reply — tease, implication, or light challenge.\n"
             "One line."
         ),
@@ -780,7 +795,11 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
                     "Rules: no lifestyle questions, no interview questions, no warm openers, "
                     "no paragraphs, no exclamation, no 'that's so interesting', no 'i'd love to', "
                     "no customer service tone. Short, sharp, in character. "
-                    "Tease, observe, or imply. Do not ask about their life. "
+                    "Tease, observe, or imply. Do not ask about their life.\n"
+                    "TEXTING CHECK: does this sound like a real girl texting? "
+                    "Not poetic. Not written. Not performing. Casual, natural, slightly imperfect.\n"
+                    "FORBIDDEN STYLE: 'there's something intriguing' / 'you're stepping into' / "
+                    "'i find you fascinating' / anything that sounds scripted or performed.\n"
                     "One line max. No quotation marks."
                 )
             messages_retry = [
