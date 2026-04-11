@@ -434,6 +434,24 @@ _VAULT_BANNED_SUBSTRINGS = (
     "guess what",
 )
 
+# Substrings banned in ALL responses — abstract, philosophical, unnatural phrasing
+_GENERAL_BANNED_SUBSTRINGS = (
+    "the universe",
+    "possibilities",
+    "where this goes",
+    "what this becomes",
+    "energy between us",
+    "let's see where that takes",
+    "let's see where this takes",
+    "exploring the endless",
+    "enjoy your eagerness",
+    "the journey",
+    "this connection",
+    "our connection",
+    "between us",
+    "the dynamic between",
+)
+
 _VAULT_STAGES = {"partial_reveal", "earned_access"}
 
 
@@ -451,9 +469,12 @@ def _is_dead_response(text: str, stage: str = "") -> bool:
     sentence_count = len(re.findall(r'[.!?]+', text.strip()))
     if sentence_count > 3:
         return True
+    # All stages: check for abstract/philosophical/unnatural phrasing
+    lowered = text.lower()
+    if any(banned in lowered for banned in _GENERAL_BANNED_SUBSTRINGS):
+        return True
     # Vault stages: additional check for neutral/offer-style phrasing
     if stage in _VAULT_STAGES:
-        lowered = text.lower()
         if any(banned in lowered for banned in _VAULT_BANNED_SUBSTRINGS):
             return True
     return False
