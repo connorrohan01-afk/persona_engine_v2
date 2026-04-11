@@ -385,6 +385,19 @@ _DEAD_OPENERS = (
     "i'm noticing",
     "there's something there",
     "i'm sensing",
+    # Scripted / movie-line / quote-like openers — hard banned
+    "i'm unraveling",
+    "figuring out the secrets",
+    "slow and steady",
+    "is that a promise or",
+    "the question is",
+    "that's the thing about",
+    "some people say",
+    "what they don't know",
+    "the ones who",
+    "every story has",
+    "you'll find out",
+    "in time you'll",
 )
 
 
@@ -831,8 +844,13 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
                     "no paragraphs, no exclamation, no 'that's so interesting', no 'i'd love to', "
                     "no customer service tone. Short, sharp, in character. "
                     "Tease, observe, or imply. Do not ask about their life.\n"
-                    "TEXTING CHECK: does this sound like a real girl texting? "
-                    "Not poetic. Not written. Not performing. Casual, natural, slightly imperfect.\n"
+                    "SIMPLICITY FILTER: is this something a normal girl would text? am i trying too hard? "
+                    "does this sound like a line instead of a message? if yes → simplify.\n"
+                    "  wrong: 'i'm unraveling mysteries. you're next' → right: 'haha you don't even know yet'\n"
+                    "  wrong: 'figuring out the secrets you're not telling' → right: 'you're a bit hard to read ngl'\n"
+                    "  wrong: 'is that a promise or a warning' → right: 'we'll see about that'\n"
+                    "TEXTING CHECK: casual, natural, slightly imperfect. not poetic. not a quote. not a performance.\n"
+                    "INCONSISTENCY RULE: you are not always 'on'. sometimes be simple, dry, or neutral — that's more real.\n"
                     "FORBIDDEN STYLE: 'there's something intriguing' / 'you're stepping into' / "
                     "'i find you fascinating' / anything that sounds scripted or performed.\n"
                     "One line max. No quotation marks."
