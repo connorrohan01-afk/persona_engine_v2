@@ -21,7 +21,12 @@ from keyboards import (
     payment_done_keyboard,
     upsell_keyboard,
 )
-from llm import chat_reply, persona_message
+from llm import (
+    chat_reply,
+    persona_message,
+    pick_tease_asset,
+    pick_image_vault_transition,
+)
 from response_library import pick_line
 from states import State
 
@@ -409,6 +414,108 @@ def _classify_intent_level(text: str, intent: str, signal: bool) -> str:
     return "low"
 
 
+# ── Tease-image pillar ────────────────────────────────────────────────────────
+
+# Phrases that are direct, unambiguous requests to see her — safe image triggers.
+# Excluded: "where are you", "can i see you" — intercepted by meetup handler first.
+# Excluded: broad situational phrases — too easy to false-fire on normal chat.
+_IMAGE_TEASE_TRIGGER_PHRASES = [
+    "what do you look like",
+    "what you look like",
+    "send a pic",
+    "send pic",
+    "send me a pic",
+    "show yourself",
+    "show me a pic",
+    "got a pic",
+    "got any pics",
+    "any pics",
+    "see a pic",
+]
+
+# Minimum conversation depth before image can fire
+_IMAGE_TEASE_MIN_TURNS = 3
+_IMAGE_TEASE_MIN_ENGAGEMENT = 1  # at least one positive signal in the session
+
+
+def _should_drop_image_tease(
+    text: str,
+    turn_count: int,
+    engagement: int,
+    intent: str,
+    already_sent: bool,
+) -> bool:
+    """
+    Gate for the image-tease pillar. All conditions must pass.
+
+    True when:
+      - user sent a direct pic/appearance request
+      - conversation has enough depth (min turns + positive engagement)
+      - user is not exiting, being rude, or giving cold one-word replies
+      - image hasn't already dropped this session
+    """
+    if already_sent:
+        return False
+    if not any(p in text.lower() for p in _IMAGE_TEASE_TRIGGER_PHRASES):
+        return False
+    if turn_count < _IMAGE_TEASE_MIN_TURNS:
+        logger.debug("image_tease blocked: turn_count=%d < min=%d", turn_count, _IMAGE_TEASE_MIN_TURNS)
+        return False
+    if engagement < _IMAGE_TEASE_MIN_ENGAGEMENT:
+        logger.debug("image_tease blocked: engagement=%d < min=%d", engagement, _IMAGE_TEASE_MIN_ENGAGEMENT)
+        return False
+    if intent in ("exit", "dry"):
+        logger.debug("image_tease blocked: intent=%s", intent)
+        return False
+    return True
+
+
+async def _drop_image_tease(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+) -> None:
+    """
+    Tease-image flow:
+      1. Photo + caption (asset-matched copy)
+      2. Short pause → post-image line (casual, not hype)
+      3. Short pause → vault transition line
+      4. Vault buttons drop
+
+    Uses the asset config from llm.TEASE_ASSETS so adding new images
+    only requires adding an entry there.
+    """
+    asset = pick_tease_asset()
+    caption = asset.caption()
+    post_line = asset.post_line()
+    vault_line = pick_image_vault_transition()
+
+    logger.info("image_tease: dropping asset=%s", asset.path)
+
+    # Step 1 — photo
+    await context.bot.send_chat_action(chat_id=chat_id, action="upload_photo")
+    await asyncio.sleep(random.uniform(1.0, 1.6))
+    try:
+        with open(asset.path, "rb") as f:
+            await context.bot.send_photo(chat_id=chat_id, photo=f, caption=caption)
+    except FileNotFoundError:
+        logger.error("image_tease: asset not found at %s", asset.path)
+        return  # abort — don't send hollow copy without the image
+    except Exception as exc:
+        logger.error("image_tease: failed to send photo: %s", exc)
+        return
+
+    # Step 2 — post-image line
+    await _type_and_send(context.bot, chat_id, post_line, delay=random.uniform(1.2, 1.8))
+
+    # Step 3 — vault transition
+    await _type_and_send(context.bot, chat_id, vault_line, delay=random.uniform(1.8, 2.2))
+
+    # Step 4 — vault buttons
+    await asyncio.sleep(random.uniform(0.5, 0.9))
+    await _show_packs(update, context)
+
+
 _MEETUP_WORDS = {"meet", "meetup", "irl"}
 _MEETUP_PHRASES = [
     "come over", "where are you", "where you at", "link up", "can i see you",
@@ -786,6 +893,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             and engagement > 2
             and stage in ("tease", "partial_reveal")
         )
+
+        # Image-tease trigger — direct pic request with enough conversation depth
+        if _should_drop_image_tease(
+            text=text,
+            turn_count=turn_count,
+            engagement=engagement,
+            intent=intent,
+            already_sent=context.user_data.get("image_tease_sent", False),
+        ):
+            context.user_data["image_tease_sent"] = True
+            await _drop_image_tease(update, context, chat_id)
+            return
 
         if cooldown_ok and (
             _trigger_direct

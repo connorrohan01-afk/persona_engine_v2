@@ -466,6 +466,72 @@ _GENERAL_BANNED_SUBSTRINGS = (
 
 _VAULT_STAGES = {"partial_reveal", "earned_access"}
 
+# ── Image tease asset config ──────────────────────────────────────────────────
+# Each asset carries its own captions and post-lines so copy matches the image.
+# Vault transitions are shared — they lead to the same vault regardless of image.
+
+class _TeaseAsset:
+    __slots__ = ("path", "captions", "post_lines")
+
+    def __init__(self, path: str, captions: list[str], post_lines: list[str]):
+        self.path = path
+        self.captions = captions
+        self.post_lines = post_lines
+
+    def caption(self) -> str:
+        return random.choice(self.captions)
+
+    def post_line(self) -> str:
+        return random.choice(self.post_lines)
+
+
+TEASE_ASSETS: list[_TeaseAsset] = [
+    _TeaseAsset(
+        path="assets/mika/shower_tease_01.jpg",
+        captions=[
+            "just got out tbh",
+            "lol caught me",
+            "don't read into it",
+            "yeah hi",
+            "wasn't really going to but okay",
+        ],
+        post_lines=[
+            "don't make it weird",
+            "you're welcome i guess",
+            "that's all you get for now",
+            "i wasn't even going to send that",
+            "lol relax",
+            "okay that's enough of that",
+        ],
+    ),
+]
+
+# Vault transition lines — shared across all assets
+_VAULT_TRANSITION_LINES: list[str] = [
+    "there's more if you want it",
+    "that was just a little one",
+    "you want more or nah",
+    "the rest is in there",
+    "anyway. there's more if you're curious",
+]
+
+
+def pick_tease_asset() -> _TeaseAsset:
+    return random.choice(TEASE_ASSETS)
+
+
+def pick_image_vault_transition() -> str:
+    return random.choice(_VAULT_TRANSITION_LINES)
+
+
+# Keep legacy names so existing imports don't break
+def pick_image_caption() -> str:
+    return TEASE_ASSETS[0].caption()
+
+
+def pick_image_post_line() -> str:
+    return TEASE_ASSETS[0].post_line()
+
 
 def _is_dead_response(text: str, stage: str = "") -> bool:
     """Return True if the response is a forbidden dead-end reply."""
