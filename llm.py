@@ -529,32 +529,49 @@ TEASE_ASSETS: list[_TeaseAsset] = [
             "just got out tbh",
             "lol caught me",
             "don't read into it",
-            "yeah hi",
+            "okay fine. hi",
             "wasn't really going to but okay",
+            "didn't even plan to send this",
+            "lol this is what you asked for",
         ],
         post_lines=[
             "don't make it weird",
             "you're welcome i guess",
             "that's all you get for now",
             "i wasn't even going to send that",
-            "lol relax",
-            "okay that's enough of that",
+            "don't overthink it",
+            "yeah so anyway",
         ],
     ),
 ]
 
-# Vault transition lines — shared across all assets
+# Pre-image lines — sent immediately before the photo to create a beat of anticipation.
+# Should feel like a quick, low-effort reaction to the request.
+_IMAGE_PRE_LINES: list[str] = [
+    "lol okay hold on",
+    "fine. hold on",
+    "oh you actually asked",
+    "okay. give me a sec",
+    "lol you asked for it",
+]
+
+# Vault transition lines — shared across all assets.
+# Must imply "there's more" without asking or pitching directly.
 _VAULT_TRANSITION_LINES: list[str] = [
     "there's more if you want it",
     "that was just a little one",
-    "you want more or nah",
-    "the rest is in there",
+    "this isn't even the good stuff",
+    "the rest is a different thing",
     "anyway. there's more if you're curious",
 ]
 
 
 def pick_tease_asset() -> _TeaseAsset:
     return random.choice(TEASE_ASSETS)
+
+
+def pick_image_pre_line() -> str:
+    return random.choice(_IMAGE_PRE_LINES)
 
 
 def pick_image_vault_transition() -> str:

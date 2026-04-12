@@ -25,6 +25,7 @@ from llm import (
     chat_reply,
     persona_message,
     pick_tease_asset,
+    pick_image_pre_line,
     pick_image_vault_transition,
 )
 from response_library import pick_line
@@ -434,8 +435,8 @@ _IMAGE_TEASE_TRIGGER_PHRASES = [
 ]
 
 # Minimum conversation depth before image can fire
-_IMAGE_TEASE_MIN_TURNS = 3
-_IMAGE_TEASE_MIN_ENGAGEMENT = 1  # at least one positive signal in the session
+_IMAGE_TEASE_MIN_TURNS = 4
+_IMAGE_TEASE_MIN_ENGAGEMENT = 2  # at least two positive signals in the session
 
 
 def _should_drop_image_tease(
@@ -443,6 +444,7 @@ def _should_drop_image_tease(
     turn_count: int,
     engagement: int,
     intent: str,
+    stage: str,
     already_sent: bool,
 ) -> bool:
     """
@@ -451,12 +453,17 @@ def _should_drop_image_tease(
     True when:
       - user sent a direct pic/appearance request
       - conversation has enough depth (min turns + positive engagement)
-      - user is not exiting, being rude, or giving cold one-word replies
+      - stage is past hook (not firing cold)
+      - user is not exiting or giving cold one-word replies
       - image hasn't already dropped this session
     """
     if already_sent:
         return False
-    if not any(p in text.lower() for p in _IMAGE_TEASE_TRIGGER_PHRASES):
+    matched = next((p for p in _IMAGE_TEASE_TRIGGER_PHRASES if p in text.lower()), None)
+    if not matched:
+        return False
+    if stage == "hook":
+        logger.debug("image_tease blocked: stage=hook (too early)")
         return False
     if turn_count < _IMAGE_TEASE_MIN_TURNS:
         logger.debug("image_tease blocked: turn_count=%d < min=%d", turn_count, _IMAGE_TEASE_MIN_TURNS)
@@ -467,6 +474,7 @@ def _should_drop_image_tease(
     if intent in ("exit", "dry"):
         logger.debug("image_tease blocked: intent=%s", intent)
         return False
+    logger.debug("image_tease triggered: phrase=%r stage=%s", matched, stage)
     return True
 
 
@@ -477,10 +485,11 @@ async def _drop_image_tease(
 ) -> None:
     """
     Tease-image flow:
-      1. Photo + caption (asset-matched copy)
-      2. Short pause → post-image line (casual, not hype)
-      3. Short pause → vault transition line
-      4. Vault buttons drop
+      1. Micro-hesitation beat (pre-image line — makes the send feel unplanned)
+      2. Photo + caption (asset-matched copy)
+      3. Short pause → post-image line (casual, not hype)
+      4. Short pause → vault transition line
+      5. Vault buttons drop
 
     Uses the asset config from llm.TEASE_ASSETS so adding new images
     only requires adding an entry there.
@@ -488,11 +497,15 @@ async def _drop_image_tease(
     asset = pick_tease_asset()
     caption = asset.caption()
     post_line = asset.post_line()
+    pre_line = pick_image_pre_line()
     vault_line = pick_image_vault_transition()
 
     logger.info("image_tease: dropping asset=%s", asset.path)
 
-    # Step 1 — photo
+    # Step 1 — micro-hesitation beat before photo
+    await _type_and_send(context.bot, chat_id, pre_line, delay=random.uniform(1.0, 1.5))
+
+    # Step 2 — photo
     await context.bot.send_chat_action(chat_id=chat_id, action="upload_photo")
     await asyncio.sleep(random.uniform(1.0, 1.6))
     try:
@@ -505,13 +518,13 @@ async def _drop_image_tease(
         logger.error("image_tease: failed to send photo: %s", exc)
         return
 
-    # Step 2 — post-image line
+    # Step 3 — post-image line
     await _type_and_send(context.bot, chat_id, post_line, delay=random.uniform(1.2, 1.8))
 
-    # Step 3 — vault transition
+    # Step 4 — vault transition
     await _type_and_send(context.bot, chat_id, vault_line, delay=random.uniform(1.8, 2.2))
 
-    # Step 4 — vault buttons
+    # Step 5 — vault buttons
     await asyncio.sleep(random.uniform(0.5, 0.9))
     await _show_packs(update, context)
 
@@ -900,9 +913,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             turn_count=turn_count,
             engagement=engagement,
             intent=intent,
+            stage=stage,
             already_sent=context.user_data.get("image_tease_sent", False),
         ):
             context.user_data["image_tease_sent"] = True
+            logger.info("image_tease: firing stage=%s turn=%d engagement=%d", stage, turn_count, engagement)
             await _drop_image_tease(update, context, chat_id)
             return
 
