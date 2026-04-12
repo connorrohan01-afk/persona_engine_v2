@@ -418,20 +418,30 @@ def _classify_intent_level(text: str, intent: str, signal: bool) -> str:
 # ── Tease-image pillar ────────────────────────────────────────────────────────
 
 # Phrases that are direct, unambiguous requests to see her — safe image triggers.
-# Excluded: "where are you", "can i see you" — intercepted by meetup handler first.
-# Excluded: broad situational phrases — too easy to false-fire on normal chat.
+# Note: "can i see you" hits meetup routing first — intercepted below before meetup fires.
+# Excluded: "where are you" — pure location, not visual request.
 _IMAGE_TEASE_TRIGGER_PHRASES = [
     "what do you look like",
     "what you look like",
     "send a pic",
     "send pic",
     "send me a pic",
+    "send a photo",
+    "send me a photo",
     "show yourself",
     "show me a pic",
+    "show me a photo",
+    "show me you",
+    "show me",
+    "let me see you",
+    "can i see you",
     "got a pic",
     "got any pics",
     "any pics",
     "see a pic",
+    "pic of you",
+    "photo of you",
+    "pic of yourself",
 ]
 
 # Minimum conversation depth before image can fire
@@ -836,6 +846,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Meetup redirect — intercept before all state routing ─────────────────
     if intent == "meetup":
+        # Tease intercept: "can i see you" and similar visual requests hit meetup intent
+        # but should fire the image tease when gate conditions are met.
+        if not context.user_data.get("image_tease_sent", False):
+            _mt_stage = context.user_data.get("conversation_stage", user.get("conversation_stage", "hook"))
+            _mt_turns = user.get("turn_count", 0)
+            _mt_eng   = user.get("engagement_score", 0)
+            if _should_drop_image_tease(
+                text=text,
+                turn_count=_mt_turns,
+                engagement=_mt_eng,
+                intent="neutral",   # bypass the exit/dry block — meetup is not rejection
+                stage=_mt_stage,
+                already_sent=False,
+            ):
+                context.user_data["image_tease_sent"] = True
+                logger.info("image_tease: firing (meetup intercept) stage=%s turn=%d engagement=%d", _mt_stage, _mt_turns, _mt_eng)
+                await _drop_image_tease(update, context, chat_id)
+                return
+
         history = context.user_data.get("history", [])
         reply = await chat_reply(text, context={"stage": "meetup"}, history=history)
         _track_response(context.user_data, "redirect", reply)
