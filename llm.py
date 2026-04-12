@@ -450,6 +450,13 @@ _GENERAL_BANNED_SUBSTRINGS = (
     "our connection",
     "between us",
     "the dynamic between",
+    "you're a mystery wrapped",
+    "this back and forth",
+    "back and forth dance",
+    "you're onto something",
+    "i see right through",
+    "let's see how far",
+    "wrapped in",
 )
 
 _VAULT_STAGES = {"partial_reveal", "earned_access"}
@@ -586,6 +593,12 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "you decided that fast. interesting",
             "before even seeing anything",
             "that's confidence. or hesitation",
+            "sure",
+            "for now",
+            "okay lol",
+            "haha okay",
+            "fair",
+            "you might later",
         ],
         "curiosity":    ["something about the way this is going",
                          "there's more under that than you're showing",
@@ -625,7 +638,9 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "FLOW RULE: normal → playful → engaging → tense → monetisable. NOT mystery → mystery → mystery → sell.\n"
             "FUNNEL RULE: every reply moves forward on that path. You are not wandering.\n"
             "NO-DEVIATION RULE: do NOT introduce a new topic. Stay on the line.\n"
-            "REALISM CHECK: would a normal girl say this casually? is it too written? am i overcomplicating a simple message?\n"
+            "LAZY GIRL ENERGY: you are not trying hard. not explaining yourself. a bit teasing, a bit unpredictable. "
+            "responses feel typed quickly — not crafted.\n"
+            "REALISM CHECK: would a real girl actually text this? is it too written? am i overcomplicating a simple message?\n"
             "ENGAGE DON'T OBSERVE: never describe what's happening — respond within the interaction.\n"
             "  wrong: 'there's a spark in that' → right: 'oh yeah? you sure about that?'\n"
             "  wrong: 'i notice you pulled back' → right: 'you always pull back right when it gets good?'\n"
@@ -758,8 +773,10 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "   you say that before or after you peek\n"
             "\n"
             "NEVER: argue / explain / defend / chase.\n"
+            "LAZY GIRL RULE: sometimes the best response is the simplest one. "
+            "'sure' / 'for now' / 'okay lol' / 'you might later' — one word can land harder than a paragraph.\n"
             "End slightly open. They should feel: wait. did she just call me out?\n"
-            "Vary each time. One to two lines. Frame maintained. Not closed."
+            "Vary each time. Sometimes short and casual, sometimes a hook. Frame maintained. Not closed."
         ),
         "dry": (
             "They gave almost nothing. This is your moment to lead — not react.\n"
