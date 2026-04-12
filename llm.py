@@ -444,6 +444,56 @@ def _sanitize_output(text: str) -> str:
     return text.strip()
 
 
+# ── Final output sanitizer — applied to every outgoing message ────────────────
+# Replacements fire in order. Patterns that remove a phrase leave whitespace
+# artifacts which are collapsed at the end.
+
+_PHRASE_REPLACEMENTS: list[tuple[re.Pattern, str]] = [
+    # Poetic / literary full-phrase replacements
+    (re.compile(r"there'?s\s+something\s+(intriguing|mysterious|enigmatic|interesting)\s+about\s+(that|this|you|it|how\s+you)", re.I), "haha what's that supposed to mean"),
+    (re.compile(r"i\s+keep\s+you\s+guessing[,.]?\s*(don'?t\s+i\.?)?", re.I), "maybe"),
+    (re.compile(r"you'?re\s+the\s+real\s+question\s+here", re.I), "nah what about you"),
+    (re.compile(r"unraveling\s+something", re.I), "just chilling"),
+    # Analyzing how the user said something
+    (re.compile(r"(the\s+way|i\s+like\s+how)\s+you\s+(said|put|phrased|worded)\s+that", re.I), ""),
+    (re.compile(r"there'?s\s+something\s+about\s+how\s+you", re.I), ""),
+    # Single-word literary terms — remove outright
+    (re.compile(r"\b(enigmatic|enigma|unraveling|unfolding|mesmerizing|captivating|intriguing|ever.mysterious)\b", re.I), ""),
+    # "mysterious" only when used as a descriptor (not in "direct message" etc.)
+    (re.compile(r"\b(so\s+mysterious|very\s+mysterious|quite\s+mysterious|the\s+mysterious|this\s+mysterious)\b", re.I), ""),
+    # Over-explaining openers
+    (re.compile(r"what\s+i\s+mean\s+(by\s+that\s+is|is\s+that)\s*", re.I), ""),
+]
+
+_MAX_REPLY_CHARS = 160   # messages longer than this get trimmed to 2 sentences
+
+
+def sanitize_reply(text: str) -> str:
+    """Final output filter applied to every outgoing message before sending.
+
+    Order of operations:
+      1. Replace or remove forbidden phrases.
+      2. Collapse whitespace artifacts left by removals.
+      3. Strip leading punctuation artifacts.
+      4. Trim to 2 sentences if message exceeds _MAX_REPLY_CHARS.
+    """
+    for pattern, replacement in _PHRASE_REPLACEMENTS:
+        text = pattern.sub(replacement, text)
+
+    # Collapse whitespace artifacts
+    text = re.sub(r' {2,}', ' ', text).strip()
+    # Strip leading punctuation left over after a removal at the start
+    text = re.sub(r'^[,;.\s]+', '', text).strip()
+
+    # Trim long responses: keep first 2 sentence-ending clauses
+    if len(text) > _MAX_REPLY_CHARS:
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        if len(sentences) > 2:
+            text = ' '.join(sentences[:2])
+
+    return text
+
+
 _VAULT_BANNED_SUBSTRINGS = (
     "something interesting",
     "something you might",

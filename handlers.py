@@ -27,6 +27,7 @@ from llm import (
     pick_tease_asset,
     pick_image_pre_line,
     pick_image_vault_transition,
+    sanitize_reply,
 )
 from response_library import pick_line
 from states import State
@@ -275,7 +276,11 @@ async def _type_and_send(
     delay: float | None = None,
     **kwargs,
 ):
-    """Show typing indicator, pause, then send message."""
+    """Show typing indicator, pause, then send message.
+
+    sanitize_reply() runs on every outgoing message as the final output filter.
+    """
+    text = sanitize_reply(text)
     await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
     await asyncio.sleep(delay if delay is not None else random.uniform(1.2, 2.0))
     return await bot.send_message(chat_id=chat_id, text=text, **kwargs)
