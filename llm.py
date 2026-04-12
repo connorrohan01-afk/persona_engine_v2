@@ -190,6 +190,9 @@ make a random pivot with no connection to what they said
 complain about the user being quiet or passive
 end with a statement that closes the loop with no reason to respond
 end with: fair enough / no worries / take care / sounds good
+use the words: mystery, mysterious, enigma, intriguing, unraveling, unfolding, adventure, unexpected, ever mysterious, sense a mystery, riddle
+interpret a simple short message (ha, ok, yeah, lol, nothing, what) as something deep, mysterious, or poetic — it is just a normal text, reply normally
+rephrase or quote back what the user said with a clever spin on it
 
 ---
 
@@ -403,6 +406,25 @@ _DEAD_OPENERS = (
     "every story has",
     "you'll find out",
     "in time you'll",
+    # Regressed AI/literary openers — hard banned
+    "i sense a",
+    "the ever",
+    "unraveling",
+    "uncovering",
+    "what's next in",
+    "what's next on",
+    "there's a mystery",
+    "a mystery in",
+    "sense of mystery",
+    "ever mysterious",
+    "the enigma",
+    "an enigma",
+    "this unfolding",
+    "this adventure",
+    "the adventure",
+    "intriguing how",
+    "intriguing that",
+    "how intriguing",
 )
 
 
@@ -439,7 +461,7 @@ _VAULT_BANNED_SUBSTRINGS = (
     "guess what",
 )
 
-# Substrings banned in ALL responses — abstract, philosophical, unnatural phrasing
+# Substrings banned in ALL responses — abstract, literary, AI-like phrasing
 _GENERAL_BANNED_SUBSTRINGS = (
     "the universe",
     "possibilities",
@@ -462,6 +484,21 @@ _GENERAL_BANNED_SUBSTRINGS = (
     "i see right through",
     "let's see how far",
     "wrapped in",
+    # Regressed literary / riddle language — banned everywhere
+    "enigma",
+    "unraveling",
+    "unfolding",
+    "uncovering",
+    "intriguing",
+    "ever mysterious",
+    "sense a mystery",
+    "a mystery in",
+    "the mysterious",
+    "so mysterious",
+    "this adventure",
+    "the adventure",
+    "what's next in this",
+    "what's next on this",
 )
 
 _VAULT_STAGES = {"partial_reveal", "earned_access"}
@@ -976,6 +1013,14 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
                     "  wrong: 'is that a promise or a warning' → right: 'we'll see about that'\n"
                     "  wrong: 'you're moving too fast, let's slow things down' → right: 'slow down haha'\n"
                     "  wrong: 'that resistance is intriguing' → right: 'sure lol'\n"
+                    "  wrong: 'i sense a mystery in your how you doing' → right: 'not much. you'\n"
+                    "  wrong: 'the ever mysterious ha' → right: 'lol okay'\n"
+                    "  wrong: 'unraveling some enigma' → right: 'you're hard to read'\n"
+                    "  wrong: 'what's next in this unfolding adventure?' → right: 'what else'\n"
+                    "BANNED WORDS: mystery / mysterious / enigma / intriguing / unraveling / unfolding / adventure / uncovering — "
+                    "if any of these appear → rewrite.\n"
+                    "SIMPLE MESSAGE RULE: if the user sent 'ha', 'ok', 'yeah', 'lol', 'nothing', 'what' — reply simply. "
+                    "do NOT treat it as mysterious, poetic, or deep.\n"
                     "TEXTING CHECK: casual, natural, slightly imperfect. not poetic. not a quote. not a performance.\n"
                     "INCONSISTENCY RULE: you are not always 'on'. sometimes be simple, dry, or neutral — that's more real.\n"
                     "FORBIDDEN STYLE: 'there's something intriguing' / 'you're stepping into' / "

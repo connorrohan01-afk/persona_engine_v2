@@ -18,7 +18,7 @@ desire_lines = [
     "you're doing something right. i'm just not going to tell you what",
     "you got something out of me there that i don't give easily",
     "something about how you did that. i noticed it",
-    "you moved this somewhere i didn't expect. that's rare",
+    "you moved this somewhere i didn't see coming. that's rare",
     "i'm still here. that means something",
     "okay. you're actually keeping me here",
 ]
@@ -66,7 +66,7 @@ curiosity_lines = [
     "most people don't get this much of me",
     "i'm paying more attention to you than i usually do",
     "you've been keeping me here longer than i planned",
-    "something about this has been different from the start",
+    "you've been different from the start tbh",
 ]
 
 objection_lines = [
@@ -110,7 +110,7 @@ dry_user_lines = [
     "lol okay quiet. i'll come to you",
     "you're not giving me much to go on and yet i'm not bored",
     "i like that you dont overshare. it's different",
-    "there's something under all that nothing you're giving me",
+    "you're more interesting than you're letting on",
     "you're being careful. i respect it. i'm still going to figure you out though",
     "you dont have to say much. i'm already paying attention",
 ]
