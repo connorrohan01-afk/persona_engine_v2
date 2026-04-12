@@ -219,6 +219,11 @@ _WARMUP_FALLBACKS = [
     "just chilling tbh",
     "depends who's asking",
     "you always this direct",
+    "why you asking",
+    "lol maybe",
+    "idk yet",
+    "you wish",
+    "okay haha",
     # Mid energy — add personality
     "lol that's not what i expected. go on",
     "actually curious now. keep going",
@@ -903,6 +908,8 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
                     "  wrong: 'i'm unraveling mysteries. you're next' → right: 'haha you don't even know yet'\n"
                     "  wrong: 'figuring out the secrets you're not telling' → right: 'you're a bit hard to read ngl'\n"
                     "  wrong: 'is that a promise or a warning' → right: 'we'll see about that'\n"
+                    "  wrong: 'you're moving too fast, let's slow things down' → right: 'slow down haha'\n"
+                    "  wrong: 'that resistance is intriguing' → right: 'sure lol'\n"
                     "TEXTING CHECK: casual, natural, slightly imperfect. not poetic. not a quote. not a performance.\n"
                     "INCONSISTENCY RULE: you are not always 'on'. sometimes be simple, dry, or neutral — that's more real.\n"
                     "FORBIDDEN STYLE: 'there's something intriguing' / 'you're stepping into' / "
