@@ -593,70 +593,77 @@ async def _drop_image_tease(
     # Step 3 — one short casual line, then stop
     await _type_and_send(context.bot, chat_id, post_line, delay=random.uniform(1.2, 1.8))
 
-    # Vault is deferred — handle_post_tease_response() fires on next user reply
-    context.user_data["awaiting_post_tease_reply"] = True
-    logger.debug("image_tease: awaiting_post_tease_reply set")
+    # Start 2-stage engagement loop — vault is deferred until stage 2 resolves
+    context.user_data["post_image_stage"] = 1
+    logger.debug("image_tease: post_image_stage=1 set")
 
 
-# ── Post-tease response pools ─────────────────────────────────────────────────
-# Sent in response to the user's first reply after the image.
-# One line, tone-matched, then vault transition fires.
+# ── Post-image engagement pools ───────────────────────────────────────────────
+# Stage 1 responses — sent on FIRST user reply after image. No vault yet.
+# Classified by tone: compliment / short / neutral.
 
-_POST_TEASE_POSITIVE = [
-    "careful. you're getting confident",
-    "yeah? didn't expect that from you",
-    "you're trouble already",
-    "lol okay. noted",
-    "don't get used to it",
-]
-
-_POST_TEASE_NEUTRAL = [
+_POST_IMAGE_COMPLIMENT = [
     "that's it?",
     "you can do better than that",
-    "be honest",
-    "come on",
-    "i expected more from you",
+    "say it properly",
+    "you're getting bold",
 ]
 
-_POST_TEASE_DRY = [
-    "don't go quiet now",
-    "you were doing fine a second ago",
-    "don't freeze up on me",
-    "lol okay. wrong reaction",
+_POST_IMAGE_SHORT = [
+    "one word?",
+    "you're making me work for it",
+    "come on. more than that",
+    "i know you have more to say",
+]
+
+_POST_IMAGE_NEUTRAL = [
+    "you went quiet",
+    "what are you thinking",
+    "don't hold back now",
+    "say it",
 ]
 
 
-async def handle_post_tease_response(
+async def handle_post_image_engagement(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     chat_id: int,
     text: str,
 ) -> None:
     """
-    Handles the user's first reply after the image tease.
+    Two-stage engagement loop after image drop.
 
-    Flow:
-      1. Classify tone of user reply (positive / dry / neutral)
-      2. Send one short tone-matched response
-      3. Send vault transition line
-      4. Drop vault buttons
+    Stage 1 (post_image_stage == 1):
+      - User replied for the first time after image
+      - Classify tone, send one short provoke/pull line
+      - Set stage to 2, return — NO vault yet
 
-    Vault never fires before this function runs — minimum 1 full user
-    interaction after image before any monetization.
+    Stage 2 (post_image_stage == 2):
+      - User replied a second time
+      - Send vault transition, drop buttons
+      - Minimum 2 user interactions after image before any monetization
     """
-    context.user_data["awaiting_post_tease_reply"] = False
+    stage = context.user_data.get("post_image_stage", 0)
 
-    if _is_compliment(text):
-        reply = random.choice(_POST_TEASE_POSITIVE)
-    elif _is_dry(text):
-        reply = random.choice(_POST_TEASE_DRY)
-    else:
-        reply = random.choice(_POST_TEASE_NEUTRAL)
+    if stage == 1:
+        context.user_data["post_image_stage"] = 2
+        logger.info("image_tease: post_image_stage=1 → responding, stage now 2")
 
-    await _type_and_send(context.bot, chat_id, reply, delay=random.uniform(1.2, 1.8))
+        if _is_compliment(text):
+            reply = random.choice(_POST_IMAGE_COMPLIMENT)
+        elif len(text.strip().split()) <= 2:
+            reply = random.choice(_POST_IMAGE_SHORT)
+        else:
+            reply = random.choice(_POST_IMAGE_NEUTRAL)
 
+        await _type_and_send(context.bot, chat_id, reply, delay=random.uniform(1.0, 1.6))
+        return
+
+    # Stage 2 — second user reply, now transition to vault
+    context.user_data.pop("post_image_stage", None)
+    logger.info("image_tease: post_image_stage=2 → sending vault transition")
     vault_line = pick_image_vault_transition()
-    await _type_and_send(context.bot, chat_id, vault_line, delay=random.uniform(1.8, 2.4))
+    await _type_and_send(context.bot, chat_id, vault_line, delay=random.uniform(1.5, 2.2))
     await asyncio.sleep(random.uniform(0.5, 0.9))
     await _show_packs(update, context)
 
@@ -1055,10 +1062,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # score_delta == 0 ("k", "ok") → counter neither increments nor resets
         consecutive_engaged = context.user_data.get("consecutive_engaged", 0)
 
-        # ── Post-tease handler — fires FIRST if we're waiting on user reply ──
-        if context.user_data.get("awaiting_post_tease_reply"):
-            logger.info("image_tease: post-tease reply received — routing to handle_post_tease_response")
-            await handle_post_tease_response(update, context, chat_id, text)
+        # ── Post-image engagement loop — intercepts until 2 replies collected ──
+        if context.user_data.get("post_image_stage"):
+            logger.info("image_tease: post_image_stage=%d — routing to engagement loop", context.user_data["post_image_stage"])
+            await handle_post_image_engagement(update, context, chat_id, text)
             return
 
         # ── Image-tease trigger — checked BEFORE vault shortcut logic ────────
