@@ -528,9 +528,12 @@ def _should_drop_image_tease(
     if engagement < _IMAGE_TEASE_MIN_ENGAGEMENT:
         logger.debug("image_tease: SOFT blocked — engagement=%d < %d", engagement, _IMAGE_TEASE_MIN_ENGAGEMENT)
         return False
-    if intent in ("exit", "dry"):
-        logger.debug("image_tease: SOFT blocked — intent=%s", intent)
+    if intent == "exit":
+        logger.debug("image_tease: SOFT blocked — intent=exit")
         return False
+    # Note: "dry" intent is NOT a hard block here. Short playful messages like
+    # "lol", "nice", "haha" are classified as dry but ARE genuine engagement.
+    # The signal check below handles quality — if nothing passes, tease doesn't fire.
     signal = _soft_tease_signal(text, intent, intent_level, consecutive_engaged)
     if not signal:
         logger.debug(
@@ -1041,12 +1044,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         intent_level = _classify_intent_level(text, intent, signal)
         stage = _maybe_advance_stage(context.user_data, intent, signal, intent_level)
 
-        # Track consecutive non-dry engaged turns (used by SOFT tease path)
-        if intent not in ("exit", "dry") and not _is_dry(text):
+        # Track consecutive positively-scored turns (used by SOFT tease path).
+        # Uses score_delta > 0 rather than intent != "dry" so short playful messages
+        # like "lol", "nice", "haha" (score=+1 but classified as dry) build momentum.
+        # Only intent=exit or a negative score resets the counter.
+        if intent != "exit" and score_delta > 0:
             context.user_data["consecutive_engaged"] = context.user_data.get("consecutive_engaged", 0) + 1
-        else:
+        elif intent == "exit" or score_delta < 0:
             context.user_data["consecutive_engaged"] = 0
-        consecutive_engaged = context.user_data["consecutive_engaged"]
+        # score_delta == 0 ("k", "ok") → counter neither increments nor resets
+        consecutive_engaged = context.user_data.get("consecutive_engaged", 0)
 
         # ── Post-tease handler — fires FIRST if we're waiting on user reply ──
         if context.user_data.get("awaiting_post_tease_reply"):
