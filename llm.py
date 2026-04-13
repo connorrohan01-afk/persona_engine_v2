@@ -607,14 +607,28 @@ _IMAGE_PRE_LINES: list[str] = [
     "okay fine. one sec",
 ]
 
-# Vault transition lines — shared across all assets.
+# Post-tease follow lines — sent after the image + post-line, before any vault.
+# Purpose: create a conversational beat, let the tension land, invite reaction.
+# Must feel playful and slightly teasing — not scripted or robotic.
+_POST_TEASE_FOLLOW_LINES: list[str] = [
+    "don't stare too hard",
+    "you got quiet all of a sudden",
+    "be honest. what did you notice first",
+    "that changed your energy a bit",
+    "lol you're thinking about it",
+    "say something",
+    "you're allowed to react",
+    "don't pretend that was nothing",
+]
+
+# Vault transition lines — sent after user replies to the post-tease follow.
 # Must imply "there's more" without asking or pitching directly.
 _VAULT_TRANSITION_LINES: list[str] = [
-    "there's more if you want it",
-    "that was just a little one",
-    "this isn't even the good stuff",
-    "the rest is a different thing",
-    "anyway. there's more if you're curious",
+    "there's more. just not here",
+    "that was the safe version",
+    "you're not getting the rest that easy",
+    "that was just a preview tbh",
+    "the rest is somewhere else",
 ]
 
 
@@ -624,6 +638,10 @@ def pick_tease_asset() -> _TeaseAsset:
 
 def pick_image_pre_line() -> str:
     return random.choice(_IMAGE_PRE_LINES)
+
+
+def pick_post_tease_follow_line() -> str:
+    return random.choice(_POST_TEASE_FOLLOW_LINES)
 
 
 def pick_image_vault_transition() -> str:

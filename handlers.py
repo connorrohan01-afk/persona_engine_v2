@@ -26,6 +26,7 @@ from llm import (
     persona_message,
     pick_tease_asset,
     pick_image_pre_line,
+    pick_post_tease_follow_line,
     pick_image_vault_transition,
     sanitize_reply,
 )
@@ -528,12 +529,15 @@ async def _drop_image_tease(
     chat_id: int,
 ) -> None:
     """
-    Tease-image flow:
-      1. Micro-hesitation beat (pre-image line — makes the send feel unplanned)
-      2. Photo + caption (asset-matched copy)
-      3. Short pause → post-image line (casual, not hype)
-      4. Short pause → vault transition line
-      5. Vault buttons drop
+    Tease-image flow (first half — runs immediately on trigger):
+      1. Micro-hesitation beat
+      2. Photo + caption
+      3. Post-image line (casual, not hype)
+      4. Follow-up curiosity line (tension/reaction — invites user reply)
+
+    Vault transition + buttons are intentionally deferred.
+    They fire on the user's next message via the post_tease_pending flag.
+    This ensures at least one user reply before any monetization.
 
     Uses the asset config from llm.TEASE_ASSETS so adding new images
     only requires adding an entry there.
@@ -542,7 +546,7 @@ async def _drop_image_tease(
     caption = asset.caption()
     post_line = asset.post_line()
     pre_line = pick_image_pre_line()
-    vault_line = pick_image_vault_transition()
+    follow_line = pick_post_tease_follow_line()
 
     logger.info("image_tease: dropping asset=%s", asset.path)
 
@@ -565,12 +569,12 @@ async def _drop_image_tease(
     # Step 3 — post-image line
     await _type_and_send(context.bot, chat_id, post_line, delay=random.uniform(1.2, 1.8))
 
-    # Step 4 — vault transition
-    await _type_and_send(context.bot, chat_id, vault_line, delay=random.uniform(1.8, 2.2))
+    # Step 4 — follow-up curiosity line (invites user to react)
+    await _type_and_send(context.bot, chat_id, follow_line, delay=random.uniform(2.0, 2.8))
 
-    # Step 5 — vault buttons
-    await asyncio.sleep(random.uniform(0.5, 0.9))
-    await _show_packs(update, context)
+    # Mark that vault transition is pending — fires on next user reply
+    context.user_data["post_tease_pending"] = True
+    logger.debug("image_tease: post_tease_pending set — vault deferred until user replies")
 
 
 _MEETUP_WORDS = {"meet", "meetup", "irl"}
@@ -971,6 +975,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             and engagement > 2
             and stage in ("tease", "partial_reveal")
         )
+
+        # Post-tease buffer: user just replied after the image — now drop vault
+        if context.user_data.get("post_tease_pending"):
+            context.user_data.pop("post_tease_pending")
+            vault_line = pick_image_vault_transition()
+            logger.info("image_tease: post_tease_pending resolved — sending vault transition")
+            await _type_and_send(context.bot, chat_id, vault_line, delay=random.uniform(1.5, 2.2))
+            await asyncio.sleep(random.uniform(0.5, 0.9))
+            await _show_packs(update, context)
+            return
 
         # Image-tease trigger — hybrid gate (depth + soft engagement signal)
         if _should_drop_image_tease(
