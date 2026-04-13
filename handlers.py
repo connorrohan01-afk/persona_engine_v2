@@ -26,7 +26,6 @@ from llm import (
     persona_message,
     pick_tease_asset,
     pick_image_pre_line,
-    pick_post_tease_follow_line,
     pick_image_vault_transition,
     sanitize_reply,
 )
@@ -546,7 +545,6 @@ async def _drop_image_tease(
     caption = asset.caption()
     post_line = asset.post_line()
     pre_line = pick_image_pre_line()
-    follow_line = pick_post_tease_follow_line()
 
     logger.info("image_tease: dropping asset=%s", asset.path)
 
@@ -566,15 +564,75 @@ async def _drop_image_tease(
         logger.error("image_tease: failed to send photo: %s", exc)
         return
 
-    # Step 3 — post-image line
+    # Step 3 — one short casual line, then stop
     await _type_and_send(context.bot, chat_id, post_line, delay=random.uniform(1.2, 1.8))
 
-    # Step 4 — follow-up curiosity line (invites user to react)
-    await _type_and_send(context.bot, chat_id, follow_line, delay=random.uniform(2.0, 2.8))
+    # Vault is deferred — handle_post_tease_response() fires on next user reply
+    context.user_data["awaiting_post_tease_reply"] = True
+    logger.debug("image_tease: awaiting_post_tease_reply set")
 
-    # Mark that vault transition is pending — fires on next user reply
-    context.user_data["post_tease_pending"] = True
-    logger.debug("image_tease: post_tease_pending set — vault deferred until user replies")
+
+# ── Post-tease response pools ─────────────────────────────────────────────────
+# Sent in response to the user's first reply after the image.
+# One line, tone-matched, then vault transition fires.
+
+_POST_TEASE_POSITIVE = [
+    "careful. you're getting confident",
+    "yeah? didn't expect that from you",
+    "you're trouble already",
+    "lol okay. noted",
+    "don't get used to it",
+]
+
+_POST_TEASE_NEUTRAL = [
+    "that's it?",
+    "you can do better than that",
+    "be honest",
+    "come on",
+    "i expected more from you",
+]
+
+_POST_TEASE_DRY = [
+    "don't go quiet now",
+    "you were doing fine a second ago",
+    "don't freeze up on me",
+    "lol okay. wrong reaction",
+]
+
+
+async def handle_post_tease_response(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+    text: str,
+) -> None:
+    """
+    Handles the user's first reply after the image tease.
+
+    Flow:
+      1. Classify tone of user reply (positive / dry / neutral)
+      2. Send one short tone-matched response
+      3. Send vault transition line
+      4. Drop vault buttons
+
+    Vault never fires before this function runs — minimum 1 full user
+    interaction after image before any monetization.
+    """
+    context.user_data["awaiting_post_tease_reply"] = False
+
+    if _is_compliment(text):
+        reply = random.choice(_POST_TEASE_POSITIVE)
+    elif _is_dry(text):
+        reply = random.choice(_POST_TEASE_DRY)
+    else:
+        reply = random.choice(_POST_TEASE_NEUTRAL)
+
+    await _type_and_send(context.bot, chat_id, reply, delay=random.uniform(1.2, 1.8))
+
+    vault_line = pick_image_vault_transition()
+    await _type_and_send(context.bot, chat_id, vault_line, delay=random.uniform(1.8, 2.4))
+    await asyncio.sleep(random.uniform(0.5, 0.9))
+    await _show_packs(update, context)
 
 
 _MEETUP_WORDS = {"meet", "meetup", "irl"}
@@ -976,14 +1034,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             and stage in ("tease", "partial_reveal")
         )
 
-        # Post-tease buffer: user just replied after the image — now drop vault
-        if context.user_data.get("post_tease_pending"):
-            context.user_data.pop("post_tease_pending")
-            vault_line = pick_image_vault_transition()
-            logger.info("image_tease: post_tease_pending resolved — sending vault transition")
-            await _type_and_send(context.bot, chat_id, vault_line, delay=random.uniform(1.5, 2.2))
-            await asyncio.sleep(random.uniform(0.5, 0.9))
-            await _show_packs(update, context)
+        # Post-tease handler — user replied after image, vault fires here
+        if context.user_data.get("awaiting_post_tease_reply"):
+            logger.info("image_tease: post-tease reply received — routing to handle_post_tease_response")
+            await handle_post_tease_response(update, context, chat_id, text)
             return
 
         # Image-tease trigger — hybrid gate (depth + soft engagement signal)
