@@ -164,7 +164,7 @@ def _is_strong_buy_signal(text: str) -> bool:
 _CONTENT_QUESTION_PHRASES = [
     "what's in", "what is in", "what do i get", "what's included",
     "more about", "tell me about", "what kind", "what does it",
-    "show me", "what's the difference", "which one", "what pack",
+    "what's the difference", "which one", "what pack",
     "the vip", "the premium", "the starter", "pack a", "pack b", "pack c",
 ]
 
@@ -454,29 +454,29 @@ _IMAGE_TEASE_MIN_TURNS = 3
 _IMAGE_TEASE_MIN_ENGAGEMENT = 1  # at least one positive signal in the session
 
 
-def _soft_tease_signal(text: str, intent: str, intent_level: str) -> bool:
+def _soft_tease_signal(
+    text: str,
+    intent: str,
+    intent_level: str,
+    consecutive_engaged: int = 0,
+) -> str | None:
     """
-    True when the user is showing at least one soft engagement signal.
-
-    Direct pic requests are included as the strongest signal but are no longer
-    the only path — the tease can fire on natural curiosity or playful energy.
+    Return a string describing the matched signal, or None if no signal found.
+    Used only in the SOFT path of _should_drop_image_tease.
     """
-    # Strongest: direct visual request
-    if any(p in text.lower() for p in _IMAGE_TEASE_TRIGGER_PHRASES):
-        return True
-    # Engaged intent level (MID = questions/playing along, HIGH = desire/intent)
     if intent_level in ("mid", "high"):
-        return True
-    # Question — any curiosity signal
+        return f"intent_level={intent_level}"
     if "?" in text:
-        return True
-    # Meaningful message (not a one-word reply or dead ack)
+        return "question"
     if len(text.strip().split()) >= 5:
-        return True
-    # Clear positive/playful energy
-    if _is_affirmative(text) or _is_compliment(text):
-        return True
-    return False
+        return "message_length>=5"
+    if _is_compliment(text):
+        return "compliment"
+    if _is_affirmative(text):
+        return "affirmative"
+    if consecutive_engaged >= 2:
+        return f"consecutive_engaged={consecutive_engaged}"
+    return None
 
 
 def _should_drop_image_tease(
@@ -487,38 +487,61 @@ def _should_drop_image_tease(
     intent_level: str,
     stage: str,
     already_sent: bool,
+    consecutive_engaged: int = 0,
 ) -> bool:
     """
-    Hybrid gate for the image-tease pillar.
+    Two-path gate for the image-tease pillar.
 
-    Hard gates (ALL must pass):
-      - image not yet sent this session
-      - conversation is past the hook stage
-      - minimum turn depth and engagement score reached
-      - user is not exiting or stonewalling
+    DIRECT path — explicit visual request phrase:
+      - phrase in _IMAGE_TEASE_TRIGGER_PHRASES
+      - turn_count >= 2 (minimal warmup to avoid cold fire)
+      - intent not exit/dry
 
-    Soft gate (at least ONE must pass via _soft_tease_signal):
-      - direct pic request, mid/high intent level, question, meaningful length,
-        positive/playful energy
+    SOFT path — conversation momentum:
+      - turn_count >= _IMAGE_TEASE_MIN_TURNS (4)
+      - engagement >= _IMAGE_TEASE_MIN_ENGAGEMENT (1)
+      - intent not exit/dry
+      - at least one soft signal (mid/high intent, question, length, compliment,
+        affirmative, or 2+ consecutive engaged turns)
     """
     if already_sent:
+        logger.debug("image_tease: skip — already sent this session")
         return False
-    if stage == "hook":
-        logger.debug("image_tease blocked: stage=hook")
-        return False
+
+    is_direct = any(p in text.lower() for p in _IMAGE_TEASE_TRIGGER_PHRASES)
+
+    # ── DIRECT path ──────────────────────────────────────────────────────────
+    if is_direct:
+        if intent in ("exit", "dry"):
+            logger.debug("image_tease: DIRECT blocked — intent=%s", intent)
+            return False
+        if turn_count < 2:
+            logger.debug("image_tease: DIRECT blocked — turn_count=%d < 2", turn_count)
+            return False
+        logger.info("image_tease: DIRECT trigger — phrase match turn=%d stage=%s", turn_count, stage)
+        return True
+
+    # ── SOFT path ─────────────────────────────────────────────────────────────
     if turn_count < _IMAGE_TEASE_MIN_TURNS:
-        logger.debug("image_tease blocked: turn_count=%d < min=%d", turn_count, _IMAGE_TEASE_MIN_TURNS)
+        logger.debug("image_tease: SOFT blocked — turn_count=%d < %d", turn_count, _IMAGE_TEASE_MIN_TURNS)
         return False
     if engagement < _IMAGE_TEASE_MIN_ENGAGEMENT:
-        logger.debug("image_tease blocked: engagement=%d < min=%d", engagement, _IMAGE_TEASE_MIN_ENGAGEMENT)
+        logger.debug("image_tease: SOFT blocked — engagement=%d < %d", engagement, _IMAGE_TEASE_MIN_ENGAGEMENT)
         return False
     if intent in ("exit", "dry"):
-        logger.debug("image_tease blocked: intent=%s", intent)
+        logger.debug("image_tease: SOFT blocked — intent=%s", intent)
         return False
-    if not _soft_tease_signal(text, intent, intent_level):
-        logger.debug("image_tease blocked: no soft signal")
+    signal = _soft_tease_signal(text, intent, intent_level, consecutive_engaged)
+    if not signal:
+        logger.debug(
+            "image_tease: SOFT blocked — no signal (intent_level=%s consecutive=%d text_words=%d)",
+            intent_level, consecutive_engaged, len(text.strip().split()),
+        )
         return False
-    logger.debug("image_tease: gate passed stage=%s turn=%d engagement=%d", stage, turn_count, engagement)
+    logger.info(
+        "image_tease: SOFT trigger — signal=%s stage=%s turn=%d engagement=%d",
+        signal, stage, turn_count, engagement,
+    )
     return True
 
 
@@ -949,6 +972,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _mt_turns      = user.get("turn_count", 0)
             _mt_eng        = user.get("engagement_score", 0)
             _mt_intent_lvl = _classify_intent_level(text, "meetup", False)
+            _mt_consec     = context.user_data.get("consecutive_engaged", 0)
             if _should_drop_image_tease(
                 text=text,
                 turn_count=_mt_turns,
@@ -957,6 +981,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 intent_level=_mt_intent_lvl,
                 stage=_mt_stage,
                 already_sent=False,
+                consecutive_engaged=_mt_consec,
             ):
                 context.user_data["image_tease_sent"] = True
                 logger.info("image_tease: firing (meetup intercept) stage=%s turn=%d engagement=%d", _mt_stage, _mt_turns, _mt_eng)
@@ -1016,7 +1041,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         intent_level = _classify_intent_level(text, intent, signal)
         stage = _maybe_advance_stage(context.user_data, intent, signal, intent_level)
 
-        # ── Conversion trigger — evaluate whether to show the collection UI ──
+        # Track consecutive non-dry engaged turns (used by SOFT tease path)
+        if intent not in ("exit", "dry") and not _is_dry(text):
+            context.user_data["consecutive_engaged"] = context.user_data.get("consecutive_engaged", 0) + 1
+        else:
+            context.user_data["consecutive_engaged"] = 0
+        consecutive_engaged = context.user_data["consecutive_engaged"]
+
+        # ── Post-tease handler — fires FIRST if we're waiting on user reply ──
+        if context.user_data.get("awaiting_post_tease_reply"):
+            logger.info("image_tease: post-tease reply received — routing to handle_post_tease_response")
+            await handle_post_tease_response(update, context, chat_id, text)
+            return
+
+        # ── Image-tease trigger — checked BEFORE vault shortcut logic ────────
+        # Must run here so direct requests ("show me", "send a pic") and soft
+        # vibe signals are caught before any conversion trigger can fire vault.
+        if _should_drop_image_tease(
+            text=text,
+            turn_count=turn_count,
+            engagement=engagement,
+            intent=intent,
+            intent_level=intent_level,
+            stage=stage,
+            already_sent=context.user_data.get("image_tease_sent", False),
+            consecutive_engaged=consecutive_engaged,
+        ):
+            context.user_data["image_tease_sent"] = True
+            await _drop_image_tease(update, context, chat_id)
+            return
+
+        # ── Conversion trigger — vault shortcut (only reached if tease skipped)
         last_offer_turn = context.user_data.get("last_offer_turn", -_PACK_INTRO_COOLDOWN)
         cooldown_threshold = 2 if (_is_buying_signal(text) or strong) else _PACK_INTRO_COOLDOWN
         cooldown_ok = (turn_count - last_offer_turn) >= cooldown_threshold
@@ -1033,27 +1088,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             and engagement > 2
             and stage in ("tease", "partial_reveal")
         )
-
-        # Post-tease handler — user replied after image, vault fires here
-        if context.user_data.get("awaiting_post_tease_reply"):
-            logger.info("image_tease: post-tease reply received — routing to handle_post_tease_response")
-            await handle_post_tease_response(update, context, chat_id, text)
-            return
-
-        # Image-tease trigger — hybrid gate (depth + soft engagement signal)
-        if _should_drop_image_tease(
-            text=text,
-            turn_count=turn_count,
-            engagement=engagement,
-            intent=intent,
-            intent_level=intent_level,
-            stage=stage,
-            already_sent=context.user_data.get("image_tease_sent", False),
-        ):
-            context.user_data["image_tease_sent"] = True
-            logger.info("image_tease: firing stage=%s turn=%d engagement=%d", stage, turn_count, engagement)
-            await _drop_image_tease(update, context, chat_id)
-            return
 
         if cooldown_ok and (
             _trigger_direct
