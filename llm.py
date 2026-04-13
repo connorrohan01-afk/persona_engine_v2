@@ -598,11 +598,13 @@ TEASE_ASSETS: list[_TeaseAsset] = [
 # Pre-image lines — sent immediately before the photo to create a beat of anticipation.
 # Should feel like a quick, low-effort reaction to the request.
 _IMAGE_PRE_LINES: list[str] = [
+    "wait...",
+    "okay i probably shouldn't",
+    "this is kind of risky",
+    "don't judge me",
     "lol okay hold on",
-    "fine. hold on",
-    "oh you actually asked",
-    "okay. give me a sec",
-    "lol you asked for it",
+    "i don't even know why i'm doing this",
+    "okay fine. one sec",
 ]
 
 # Vault transition lines — shared across all assets.

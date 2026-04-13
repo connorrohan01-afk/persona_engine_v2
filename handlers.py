@@ -450,8 +450,33 @@ _IMAGE_TEASE_TRIGGER_PHRASES = [
 ]
 
 # Minimum conversation depth before image can fire
-_IMAGE_TEASE_MIN_TURNS = 4
-_IMAGE_TEASE_MIN_ENGAGEMENT = 2  # at least two positive signals in the session
+_IMAGE_TEASE_MIN_TURNS = 3
+_IMAGE_TEASE_MIN_ENGAGEMENT = 1  # at least one positive signal in the session
+
+
+def _soft_tease_signal(text: str, intent: str, intent_level: str) -> bool:
+    """
+    True when the user is showing at least one soft engagement signal.
+
+    Direct pic requests are included as the strongest signal but are no longer
+    the only path — the tease can fire on natural curiosity or playful energy.
+    """
+    # Strongest: direct visual request
+    if any(p in text.lower() for p in _IMAGE_TEASE_TRIGGER_PHRASES):
+        return True
+    # Engaged intent level (MID = questions/playing along, HIGH = desire/intent)
+    if intent_level in ("mid", "high"):
+        return True
+    # Question — any curiosity signal
+    if "?" in text:
+        return True
+    # Meaningful message (not a one-word reply or dead ack)
+    if len(text.strip().split()) >= 5:
+        return True
+    # Clear positive/playful energy
+    if _is_affirmative(text) or _is_compliment(text):
+        return True
+    return False
 
 
 def _should_drop_image_tease(
@@ -459,26 +484,27 @@ def _should_drop_image_tease(
     turn_count: int,
     engagement: int,
     intent: str,
+    intent_level: str,
     stage: str,
     already_sent: bool,
 ) -> bool:
     """
-    Gate for the image-tease pillar. All conditions must pass.
+    Hybrid gate for the image-tease pillar.
 
-    True when:
-      - user sent a direct pic/appearance request
-      - conversation has enough depth (min turns + positive engagement)
-      - stage is past hook (not firing cold)
-      - user is not exiting or giving cold one-word replies
-      - image hasn't already dropped this session
+    Hard gates (ALL must pass):
+      - image not yet sent this session
+      - conversation is past the hook stage
+      - minimum turn depth and engagement score reached
+      - user is not exiting or stonewalling
+
+    Soft gate (at least ONE must pass via _soft_tease_signal):
+      - direct pic request, mid/high intent level, question, meaningful length,
+        positive/playful energy
     """
     if already_sent:
         return False
-    matched = next((p for p in _IMAGE_TEASE_TRIGGER_PHRASES if p in text.lower()), None)
-    if not matched:
-        return False
     if stage == "hook":
-        logger.debug("image_tease blocked: stage=hook (too early)")
+        logger.debug("image_tease blocked: stage=hook")
         return False
     if turn_count < _IMAGE_TEASE_MIN_TURNS:
         logger.debug("image_tease blocked: turn_count=%d < min=%d", turn_count, _IMAGE_TEASE_MIN_TURNS)
@@ -489,7 +515,10 @@ def _should_drop_image_tease(
     if intent in ("exit", "dry"):
         logger.debug("image_tease blocked: intent=%s", intent)
         return False
-    logger.debug("image_tease triggered: phrase=%r stage=%s", matched, stage)
+    if not _soft_tease_signal(text, intent, intent_level):
+        logger.debug("image_tease blocked: no soft signal")
+        return False
+    logger.debug("image_tease: gate passed stage=%s turn=%d engagement=%d", stage, turn_count, engagement)
     return True
 
 
@@ -854,14 +883,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Tease intercept: "can i see you" and similar visual requests hit meetup intent
         # but should fire the image tease when gate conditions are met.
         if not context.user_data.get("image_tease_sent", False):
-            _mt_stage = context.user_data.get("conversation_stage", user.get("conversation_stage", "hook"))
-            _mt_turns = user.get("turn_count", 0)
-            _mt_eng   = user.get("engagement_score", 0)
+            _mt_stage      = context.user_data.get("conversation_stage", user.get("conversation_stage", "hook"))
+            _mt_turns      = user.get("turn_count", 0)
+            _mt_eng        = user.get("engagement_score", 0)
+            _mt_intent_lvl = _classify_intent_level(text, "meetup", False)
             if _should_drop_image_tease(
                 text=text,
                 turn_count=_mt_turns,
                 engagement=_mt_eng,
-                intent="neutral",   # bypass the exit/dry block — meetup is not rejection
+                intent="neutral",       # meetup is not rejection — don't block on it
+                intent_level=_mt_intent_lvl,
                 stage=_mt_stage,
                 already_sent=False,
             ):
@@ -941,12 +972,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             and stage in ("tease", "partial_reveal")
         )
 
-        # Image-tease trigger — direct pic request with enough conversation depth
+        # Image-tease trigger — hybrid gate (depth + soft engagement signal)
         if _should_drop_image_tease(
             text=text,
             turn_count=turn_count,
             engagement=engagement,
             intent=intent,
+            intent_level=intent_level,
             stage=stage,
             already_sent=context.user_data.get("image_tease_sent", False),
         ):
