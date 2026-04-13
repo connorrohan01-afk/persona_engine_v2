@@ -47,6 +47,10 @@ async def init_db():
                 FOREIGN KEY (user_id) REFERENCES users(user_id)
             )
         """)
+        # Migrate pre-5-state sessions to BUILD so they enter the correct handler
+        await db.execute(
+            "UPDATE users SET state = 'BUILD' WHERE state IN ('WARMUP', 'CURIOSITY', 'SOFT_INVITE')"
+        )
         await db.commit()
 
 

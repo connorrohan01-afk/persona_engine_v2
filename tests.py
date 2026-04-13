@@ -46,37 +46,52 @@ pytestmark = pytest.mark.asyncio
 
 class TestStateMachine:
     def test_valid_transitions(self):
-        # Full new funnel path
-        assert can_transition(State.GREETING, State.WARMUP)
-        assert can_transition(State.WARMUP, State.WARMUP)       # stays in warmup during chat
-        assert can_transition(State.WARMUP, State.CURIOSITY)
-        assert can_transition(State.CURIOSITY, State.SOFT_INVITE)
-        assert can_transition(State.SOFT_INVITE, State.OFFER)
-        assert can_transition(State.SOFT_INVITE, State.WARMUP)  # rejection loops back
+        # Five-state primary chain
+        assert can_transition(State.GREETING, State.HOOK)
+        assert can_transition(State.HOOK, State.BUILD)
+        assert can_transition(State.BUILD, State.POST_TEASE)    # tease fires → POST_TEASE
+        assert can_transition(State.POST_TEASE, State.OFFER)    # vault opens from POST_TEASE only
         assert can_transition(State.OFFER, State.PREVIEW)
+        assert can_transition(State.OFFER, State.BUILD)         # rejection loops to BUILD
         assert can_transition(State.PREVIEW, State.PAYMENT_PENDING)
         assert can_transition(State.PAYMENT_PENDING, State.DELIVERY)
         assert can_transition(State.DELIVERY, State.UPSELL)
         assert can_transition(State.UPSELL, State.OFFER)
         assert can_transition(State.UPSELL, State.EXIT)
+        # Legacy state transitions still work (old DB rows)
+        assert can_transition(State.WARMUP, State.WARMUP)
+        assert can_transition(State.WARMUP, State.BUILD)
+        assert can_transition(State.SOFT_INVITE, State.OFFER)
+        assert can_transition(State.SOFT_INVITE, State.BUILD)
 
     def test_invalid_transitions(self):
         assert not can_transition(State.GREETING, State.DELIVERY)
         assert not can_transition(State.DELIVERY, State.GREETING)
         assert not can_transition(State.EXIT, State.GREETING)
         assert not can_transition(State.PAYMENT_PENDING, State.UPSELL)
-        assert not can_transition(State.WARMUP, State.OFFER)       # must go via CURIOSITY now
         assert not can_transition(State.WARMUP, State.PAYMENT_PENDING)
         assert not can_transition(State.SOFT_INVITE, State.PREVIEW)
+        # STATE LOCK: vault cannot be reached without passing through POST_TEASE
+        assert not can_transition(State.BUILD, State.OFFER)
+        assert not can_transition(State.HOOK, State.OFFER)
+        assert not can_transition(State.HOOK, State.POST_TEASE)
+        assert not can_transition(State.GREETING, State.BUILD)
 
     def test_unknown_state(self):
-        assert not can_transition("BOGUS", State.WARMUP)
-        assert not can_transition(State.WARMUP, "BOGUS")
+        assert not can_transition("BOGUS", State.BUILD)
+        assert not can_transition(State.BUILD, "BOGUS")
 
     def test_new_states_exist(self):
+        # Primary states
+        assert State.HOOK == "HOOK"
+        assert State.BUILD == "BUILD"
+        assert State.POST_TEASE == "POST_TEASE"
+        assert State.OFFER == "OFFER"
+        assert State.PREVIEW == "PREVIEW"
+        # Legacy states still accessible (for old DB rows)
+        assert State.WARMUP == "WARMUP"
         assert State.CURIOSITY == "CURIOSITY"
         assert State.SOFT_INVITE == "SOFT_INVITE"
-        assert State.PREVIEW == "PREVIEW"
 
 
 # ── Database ──────────────────────────────────────────────────────────────────

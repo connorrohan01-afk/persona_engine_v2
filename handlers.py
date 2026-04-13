@@ -71,6 +71,13 @@ _PACK_INTRO_COOLDOWN = 4
 # Minimum turns before vault fires for a HIGH intent user (bypasses stage gate)
 _HIGH_INTENT_MIN_TURNS = 2
 
+# State 1 → 2 transition: turns in HOOK before advancing to BUILD
+_HOOK_TURNS = 3
+# State 4 lock: minimum turns in POST_TEASE before vault can fire
+_POST_TEASE_MIN_TURNS = 2
+# State 4 ceiling: after this many turns in POST_TEASE, vault fires regardless
+_POST_TEASE_MAX_TURNS = 5
+
 # 6-stage escalation model — offer only unlocks after partial_reveal
 # Stage 1 HOOK:          light tease, playful tension, no selling
 # Stage 2 INTRIGUE:      imply they're different, make them feel selected
@@ -548,6 +555,29 @@ def _should_drop_image_tease(
     return True
 
 
+def _post_tease_ready(text: str, intent: str, post_tease_turns: int) -> bool:
+    """
+    True when POST_TEASE state should transition to vault (OFFER).
+
+    Rules:
+    - Hard minimum: _POST_TEASE_MIN_TURNS turns must have passed first.
+    - Hard maximum: _POST_TEASE_MAX_TURNS turns — vault fires regardless.
+    - Between min and max: require at least one qualifying signal:
+      curiosity, compliment, affirmative, direct question, or non-exit engagement.
+    """
+    if post_tease_turns < _POST_TEASE_MIN_TURNS:
+        return False
+    if post_tease_turns >= _POST_TEASE_MAX_TURNS:
+        return True
+    # Qualifying signal check
+    return (
+        "?" in text
+        or _is_compliment(text)
+        or _is_affirmative(text)
+        or intent not in ("exit", "dry")
+    )
+
+
 async def _drop_image_tease(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -593,75 +623,13 @@ async def _drop_image_tease(
     # Step 3 — one short casual line, then stop
     await _type_and_send(context.bot, chat_id, post_line, delay=random.uniform(1.2, 1.8))
 
-    # Start 2-stage engagement loop — vault is deferred until stage 2 resolves
-    context.user_data["post_image_stage"] = 1
-    logger.debug("image_tease: post_image_stage=1 set")
+    # Enter POST_TEASE state — vault is locked until min turns have passed
+    user_id = update.effective_user.id
+    await db.set_user_state(user_id, State.POST_TEASE)
+    context.user_data["post_tease_turns"] = 0
+    logger.info("state: BUILD → POST_TEASE")
 
 
-# ── Post-image engagement pools ───────────────────────────────────────────────
-# Stage 1 responses — sent on FIRST user reply after image. No vault yet.
-# Classified by tone: compliment / short / neutral.
-
-_POST_IMAGE_COMPLIMENT = [
-    "that's it?",
-    "you can do better than that",
-    "say it properly",
-    "you're getting bold",
-]
-
-_POST_IMAGE_SHORT = [
-    "one word?",
-    "you're making me work for it",
-    "come on. more than that",
-    "i know you have more to say",
-]
-
-_POST_IMAGE_NEUTRAL = [
-    "you went quiet",
-    "what are you thinking",
-    "don't hold back now",
-    "say it",
-]
-
-
-async def handle_post_image_engagement(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    chat_id: int,
-    text: str,
-) -> None:
-    """
-    Two-stage engagement loop after image drop.
-
-    Stage 1 (post_image_stage == 1):
-      - User replied for the first time after image
-      - Classify tone, send one short provoke/pull line
-      - Set stage to 2, return — NO vault yet
-
-    Stage 2 (post_image_stage == 2):
-      - User replied a second time
-      - Send vault transition, drop buttons
-      - Minimum 2 user interactions after image before any monetization
-    """
-    stage = context.user_data.get("post_image_stage", 0)
-
-    if stage == 1:
-        context.user_data["post_image_stage"] = 2
-        logger.info("image_tease: post_image_stage=1 → responding, stage now 2")
-
-        history = context.user_data.get("history", [])
-        reply = await chat_reply(text, context={"stage": "post_image_reaction"}, history=history)
-        _push_history(context.user_data, text, reply)
-        await _type_and_send(context.bot, chat_id, reply, delay=random.uniform(1.0, 1.6))
-        return
-
-    # Stage 2 — second user reply, now transition to vault
-    context.user_data.pop("post_image_stage", None)
-    logger.info("image_tease: post_image_stage=2 → sending vault transition")
-    vault_line = pick_image_vault_transition()
-    await _type_and_send(context.bot, chat_id, vault_line, delay=random.uniform(1.5, 2.2))
-    await asyncio.sleep(random.uniform(0.5, 0.9))
-    await _show_packs(update, context)
 
 
 _MEETUP_WORDS = {"meet", "meetup", "irl"}
@@ -788,7 +756,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Fresh start — one greeting, no keyboards, no packs, wait for reply
-    await db.set_user_state(user_id, State.WARMUP)
+    await db.set_user_state(user_id, State.HOOK)
     context.user_data["conversation_stage"] = "hook"
     context.user_data["stage_turn_count"] = 0
     greeting = await persona_message("greeting")
@@ -999,10 +967,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _track_response(context.user_data, "redirect", reply)
         _push_history(context.user_data, text, reply)
         await _type_and_send(context.bot, chat_id, reply)
-        # Meetup is a conversion trigger — show collection after bridge line if conversation has depth
-        if user.get("turn_count", 0) >= 3:
-            await asyncio.sleep(random.uniform(1.5, 2.5))
-            await _show_packs(update, context)
         return
 
     # ── Repeat test — call out the loop ──────────────────────────────────────
@@ -1034,8 +998,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Any non-exit message resets the exit attempt counter
     context.user_data.pop("exit_attempts", None)
 
-    # ── WARMUP: engage naturally, track turns, advance when ready ────────────
-    if state in (State.GREETING, State.WARMUP):
+    # ── STATE 1: HOOK — strict lock, no tease, no vault, no selling ─────────
+    if state in (State.HOOK, State.GREETING):
+        history = context.user_data.get("history", [])
+        turn_count = await db.increment_turn_count(user_id)
+        context.user_data["current_turn"] = turn_count
+        score_delta = _score_message(text)
+        await db.update_engagement_score(user_id, score_delta)
+
+        signal = has_buying_signal(text)
+        intent_level = _classify_intent_level(text, intent, signal)
+        stage = _maybe_advance_stage(context.user_data, intent, signal, intent_level)
+
+        # Transition to BUILD after hook turns completed
+        if turn_count >= _HOOK_TURNS:
+            await db.set_user_state(user_id, State.BUILD)
+            logger.info("state: HOOK → BUILD at turn=%d", turn_count)
+
+        if intent == "dry" and "?" not in text:
+            reply = await chat_reply(text, context={"stage": "dry"}, history=history)
+        else:
+            reply = await chat_reply(text, context={"stage": stage}, history=history)
+        _track_response(context.user_data, stage, reply)
+        _push_history(context.user_data, text, reply)
+        await _type_and_send(context.bot, chat_id, reply)
+        return
+
+    # ── STATE 2: BUILD — tease trigger live, vault locked ───────────────────
+    # WARMUP is the legacy name — migrated to BUILD on startup, handled here as fallback.
+    if state in (State.BUILD, State.WARMUP):
         history = context.user_data.get("history", [])
         turn_count = await db.increment_turn_count(user_id)
         context.user_data["current_turn"] = turn_count
@@ -1058,15 +1049,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # score_delta == 0 ("k", "ok") → counter neither increments nor resets
         consecutive_engaged = context.user_data.get("consecutive_engaged", 0)
 
-        # ── Post-image engagement loop — intercepts until 2 replies collected ──
-        if context.user_data.get("post_image_stage"):
-            logger.info("image_tease: post_image_stage=%d — routing to engagement loop", context.user_data["post_image_stage"])
-            await handle_post_image_engagement(update, context, chat_id, text)
-            return
-
-        # ── Image-tease trigger — checked BEFORE vault shortcut logic ────────
-        # Must run here so direct requests ("show me", "send a pic") and soft
-        # vibe signals are caught before any conversion trigger can fire vault.
+        # ── Image-tease trigger — the ONLY path to POST_TEASE from BUILD ─────
+        # STATE LOCK: no vault shortcut here. Vault is only reachable via POST_TEASE.
         if _should_drop_image_tease(
             text=text,
             turn_count=turn_count,
@@ -1079,47 +1063,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ):
             context.user_data["image_tease_sent"] = True
             await _drop_image_tease(update, context, chat_id)
-            return
-
-        # ── Conversion trigger — vault shortcut (only reached if tease skipped)
-        last_offer_turn = context.user_data.get("last_offer_turn", -_PACK_INTRO_COOLDOWN)
-        cooldown_threshold = 2 if (_is_buying_signal(text) or strong) else _PACK_INTRO_COOLDOWN
-        cooldown_ok = (turn_count - last_offer_turn) >= cooldown_threshold
-
-        _trigger_direct    = (_is_buying_signal(text) or strong) and turn_count >= 2
-        _trigger_question  = (
-            (_is_asking_about_content(text) or _is_high_intent_question(text))
-            and turn_count >= 3
-        )
-        _trigger_natural   = stage == "partial_reveal" and intent_level in ("mid", "high")
-        _trigger_tease_yes = stage in ("tease", "partial_reveal") and _is_affirmative(text)
-        _trigger_sustained = (
-            turn_count >= _WARMUP_MIN_TURNS + 5
-            and engagement > 2
-            and stage in ("tease", "partial_reveal")
-        )
-
-        if cooldown_ok and (
-            _trigger_direct
-            or _trigger_question
-            or _trigger_natural
-            or _trigger_tease_yes
-            or _trigger_sustained
-        ):
-            context.user_data["conversation_stage"] = "partial_reveal"
-            await db.set_conversation_stage(user_id, "partial_reveal")
-            # Line 1 — personal spike: what the user did caused this
-            spike = await chat_reply(text, context={"stage": "partial_reveal"}, history=history)
-            _track_response(context.user_data, "reward", spike)
-            _push_history(context.user_data, text, spike)
-            await _type_and_send(context.bot, chat_id, spike)
-            # Line 2 — earned access: reinforce + quiet exclusivity
-            updated_history = context.user_data.get("history", [])
-            reinforce = await chat_reply(text, context={"stage": "earned_access"}, history=updated_history)
-            await _type_and_send(context.bot, chat_id, reinforce, delay=random.uniform(0.6, 1.0))
-            # Vault
-            await asyncio.sleep(random.uniform(0.8, 1.2))
-            await _show_packs(update, context)
             return
 
         # ── Normal response ───────────────────────────────────────────────────
@@ -1148,7 +1091,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if intent == "dry" and "?" not in text:
-            # Dry: LLM with history so it reacts to the specific dynamic, not a canned line
             reply = await chat_reply(text, context={"stage": "dry"}, history=history)
             _track_response(context.user_data, "dry", reply)
             _push_history(context.user_data, text, reply)
@@ -1156,12 +1098,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif (
             intent == "objection"
             or intent_level in ("mid", "high")
-            or "?" in text  # Direct questions always need contextual LLM reply
+            or "?" in text
         ):
-            # Contextual responses — route through LLM so the reply references what they said
-            llm_stage = stage
-            reply = await chat_reply(text, context={"stage": llm_stage}, history=history)
-            _track_response(context.user_data, llm_stage, reply)
+            reply = await chat_reply(text, context={"stage": stage}, history=history)
+            _track_response(context.user_data, stage, reply)
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
         else:
@@ -1169,6 +1109,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _track_response(context.user_data, stage, reply)
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
+        return
+
+    # ── STATE 4: POST_TEASE — emotional pull, vault locked until min turns ───
+    if state == State.POST_TEASE:
+        history = context.user_data.get("history", [])
+        post_tease_turns = context.user_data.get("post_tease_turns", 0) + 1
+        context.user_data["post_tease_turns"] = post_tease_turns
+        logger.info("state: POST_TEASE turn=%d", post_tease_turns)
+
+        if _post_tease_ready(text, intent, post_tease_turns):
+            # Minimum turns met and engagement signal present — transition to vault
+            context.user_data.pop("post_tease_turns", None)
+            vault_line = pick_image_vault_transition()
+            await _type_and_send(context.bot, chat_id, vault_line, delay=random.uniform(1.5, 2.2))
+            await asyncio.sleep(random.uniform(0.5, 0.9))
+            await _show_packs(update, context)
+            return
+
+        # Still building — LLM reacts directly to what they said, no vault hints
+        reply = await chat_reply(text, context={"stage": "post_image_reaction"}, history=history)
+        _push_history(context.user_data, text, reply)
+        await _type_and_send(context.bot, chat_id, reply, delay=random.uniform(1.0, 1.6))
         return
 
     # ── SOFT_INVITE: show packs only on clear signal, never by default ───────
@@ -1184,7 +1146,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif _is_negative(text):
             # No means no — don't chase, drop back to warmup
             await db.set_rejection_flag(user_id, 1)
-            await db.set_user_state(user_id, State.WARMUP)
+            await db.set_user_state(user_id, State.BUILD)
             context.user_data.pop("soft_invite_attempts", None)
             reply = await chat_reply(text, context={"stage": "rejected"}, history=history)
             _push_history(context.user_data, text, reply)
@@ -1193,7 +1155,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif invite_attempts >= 2:
             # She's not chasing. Drop back to warmup naturally — door stays open.
             context.user_data.pop("soft_invite_attempts", None)
-            await db.set_user_state(user_id, State.WARMUP)
+            await db.set_user_state(user_id, State.BUILD)
             reply = await chat_reply(text, context={"stage": "rejected"}, history=history)
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
@@ -1250,7 +1212,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if offer_turns >= _OFFER_MAX_TURNS:
             # Timed out — drop back to warmup without pressure
             context.user_data["offer_turn_count"] = 0
-            await db.set_user_state(user_id, State.WARMUP)
+            await db.set_user_state(user_id, State.BUILD)
             reply = await chat_reply(text, context={"stage": "post_offer_objection"}, history=history)
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
@@ -1259,7 +1221,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if _is_negative(text):
             # Soft rejection — acknowledge, keep talking, don't repeat the offer
             context.user_data["offer_turn_count"] = 0
-            await db.set_user_state(user_id, State.WARMUP)
+            await db.set_user_state(user_id, State.BUILD)
             reply = await chat_reply(text, context={"stage": "post_offer_objection"}, history=history)
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
