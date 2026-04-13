@@ -649,13 +649,9 @@ async def handle_post_image_engagement(
         context.user_data["post_image_stage"] = 2
         logger.info("image_tease: post_image_stage=1 → responding, stage now 2")
 
-        if _is_compliment(text):
-            reply = random.choice(_POST_IMAGE_COMPLIMENT)
-        elif len(text.strip().split()) <= 2:
-            reply = random.choice(_POST_IMAGE_SHORT)
-        else:
-            reply = random.choice(_POST_IMAGE_NEUTRAL)
-
+        history = context.user_data.get("history", [])
+        reply = await chat_reply(text, context={"stage": "post_image_reaction"}, history=history)
+        _push_history(context.user_data, text, reply)
         await _type_and_send(context.bot, chat_id, reply, delay=random.uniform(1.0, 1.6))
         return
 
@@ -1127,7 +1123,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # ── Normal response ───────────────────────────────────────────────────
-        recent = context.user_data.get("recent_lines", [])
 
         # Stall override — two consecutive low-energy replies → advance stage and force LLM
         if _is_stalling(context.user_data) and intent != "exit":
@@ -1170,16 +1165,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
         else:
-            # micro_reward and tension_build are emotional payoff stages — always LLM, never library
-            if stage in ("micro_reward", "tension_build"):
-                reply = await chat_reply(text, context={"stage": stage}, history=history)
-                _track_response(context.user_data, stage, reply)
-                _push_history(context.user_data, text, reply)
-            else:
-                cat = _stage_to_category(stage)
-                reply = pick_line(cat, recent)
-                _track_response(context.user_data, cat, reply)
-                _push_history(context.user_data, text, reply)
+            reply = await chat_reply(text, context={"stage": stage}, history=history)
+            _track_response(context.user_data, stage, reply)
+            _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
         return
 
@@ -1239,10 +1227,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _track_response(context.user_data, stage, reply)
             _push_history(context.user_data, text, reply)
         else:
-            recent = context.user_data.get("recent_lines", [])
-            cat = _stage_to_category(stage)
-            reply = pick_line(cat, recent)
-            _track_response(context.user_data, cat, reply)
+            reply = await chat_reply(text, context={"stage": stage}, history=history)
+            _track_response(context.user_data, stage, reply)
             _push_history(context.user_data, text, reply)
         await _type_and_send(context.bot, chat_id, reply)
         return
@@ -1301,10 +1287,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _track_response(context.user_data, "dry", reply)
             _push_history(context.user_data, text, reply)
         else:
-            recent = context.user_data.get("recent_lines", [])
-            cat = _stage_to_category(stage)
-            reply = pick_line(cat, recent)
-            _track_response(context.user_data, cat, reply)
+            reply = await chat_reply(text, context={"stage": stage}, history=history)
+            _track_response(context.user_data, stage, reply)
             _push_history(context.user_data, text, reply)
         await _type_and_send(context.bot, chat_id, reply)
         return
