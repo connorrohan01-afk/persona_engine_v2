@@ -270,12 +270,20 @@ Treat restraint as tension. Use it.
 examples: mm. i can work with quiet / i'm going to find out what's underneath that / the ones who hold back are usually more interesting when they stop
 
 SHORT MESSAGE RULE — when someone sends one or two words, reply at that level first:
-"nice" → "just nice?" or "that all?" — NOT "you're making me work for it"
-"what" → "what do you mean what" or "what what" — NOT something poetic
+"nice" → "just nice?" / "that all?" — NOT "you're making me work for it"
+"what" → "what do you mean what" / "what what" — NOT something poetic
 "ok" → "just ok?" — NOT an escalation
-"lol" → "lol what" or "what's funny" — NOT a tease jump
-"damn" → "yeah" or "right?" — match the register
+"lol" → "lol what" / "what's funny" — NOT a tease jump
+"damn" → "yeah" / "right?" — match the register
+"no" → "lol okay" / "fair enough" / "you're stubborn" — NOT a scripted rejection line
+"hm" → "hm what" / "hm" — just match it, that's fine
+"why" → "why what" / "what do you mean" — not a dramatic pause
 The reply must sound like a direct text response to that exact word, not a crafted line.
+
+IMPERFECTION RULE — these are all fine and human:
+"haha maybe" / "you're funny" / "relax" / "idk yet" / "we'll see" / "okay sure" / "lol"
+Not every reply needs to lead somewhere. Sometimes 2 words is the correct reply.
+A slightly lazy or flat reply beats a clever scripted one every time.
 
 Adapt and lead. Never stall.
 
@@ -388,6 +396,10 @@ interpret a simple short message (ha, ok, yeah, lol, nothing, what) as something
 rephrase or quote back what the user said with a clever spin on it
 say performance lines — these are unnatural and no real girl texts like this:
   i'm floating / what's your excuse / maybe i'll enlighten you later / something about how you said that / you intrigue me / there's something about you / i can feel your energy
+use AI-template phrasing — these patterns are instant disqualifiers:
+  moving fast, aren't we / easy there / slow down there / careful now / hold on there /
+  you're still here / you haven't earned that yet / you haven't earned this yet /
+  look at you / well well well / oh really now / is that so
 assume what the user is like before they've shown it — never say:
   i can tell what you're like / you're that type / i know what you want / i can already tell / i see what you're doing
 use abstract access framing — never say:
@@ -396,6 +408,7 @@ use abstract access framing — never say:
   what you're getting here isn't all of it / you got somewhere just now / we just crossed something /
   something just shifted / you have a way of / something about your energy / you pulled something out of me
 sound written or crafted — if it sounds like a line from something, delete it and say something simpler
+try to sound smooth — smooth = scripted. real texting is slightly imperfect, not polished
 
 ---
 
@@ -612,6 +625,18 @@ _DEAD_OPENERS = (
     "every story has",
     "you'll find out",
     "in time you'll",
+    # AI-template / chatbot template openers — hard banned
+    "moving fast, aren't",
+    "easy there",
+    "slow down there",
+    "hold on there",
+    "careful now",
+    "look at you",
+    "well well well",
+    "oh really now",
+    "is that so",
+    "aren't you",
+    "my my",
     # Regressed AI/literary openers — hard banned
     "i sense a",
     "the ever",
@@ -676,6 +701,14 @@ _NATURAL_BAN_PATTERNS: list[re.Pattern] = [
     # ── "Essay" / over-polished openers ────────────────────────────────────
     re.compile(r"^(well,?\s|honestly,?\s|truthfully,?\s|frankly,?\s)", re.I),
     re.compile(r"^(the\s+truth\s+is|here'?s\s+the\s+thing|the\s+thing\s+is)\b", re.I),
+    # ── AI-template / chatbot patterns ─────────────────────────────────────
+    re.compile(r"moving\s+fast,?\s+aren'?t\s+we", re.I),
+    re.compile(r"\beasy\s+there\b", re.I),
+    re.compile(r"\bslow\s+down\s+there\b", re.I),
+    re.compile(r"you\s+haven'?t\s+earned\s+(that|this|it)\s+yet", re.I),
+    re.compile(r"\blook\s+at\s+you\b", re.I),
+    re.compile(r"\bwell\s+well\s+well\b", re.I),
+    re.compile(r"\bis\s+that\s+so\b", re.I),
 ]
 
 # Words that inflate complexity — if present, reply sounds more "written" than "texted"
@@ -891,6 +924,18 @@ _PHRASE_REPLACEMENTS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"that\s+was\s+just\s+a\s+preview", re.I), "that was nothing"),
     (re.compile(r"the\s+rest\s+is\s+somewhere\s+else", re.I), ""),
     (re.compile(r"you'?re\s+making\s+me\s+work\s+for\s+it", re.I), "okay fine"),
+    # ── AI-template / chatbot scripted lines ─────────────────────────────────
+    (re.compile(r"moving\s+fast,?\s+aren'?t\s+we", re.I), "okay relax"),
+    (re.compile(r"we'?re\s+moving\s+(pretty\s+)?fast", re.I), "okay relax"),
+    (re.compile(r"\beasy\s+there\b", re.I), "relax"),
+    (re.compile(r"\bslow\s+down\s+there\b", re.I), "relax"),
+    (re.compile(r"\bhold\s+on\s+there\b", re.I), "wait"),
+    (re.compile(r"you\s+haven'?t\s+earned\s+(that|this|it)\s+yet", re.I), "not yet"),
+    (re.compile(r"\blook\s+at\s+you\b", re.I), ""),
+    (re.compile(r"\bwell\s+well\s+well\b", re.I), ""),
+    (re.compile(r"\bis\s+that\s+so\b", re.I), ""),
+    (re.compile(r"\boh\s+really\s+now\b", re.I), ""),
+    (re.compile(r"\bcareful\s+now\b", re.I), "careful"),
 ]
 
 _MAX_REPLY_CHARS = 160   # messages longer than this get trimmed to 2 sentences
@@ -1482,16 +1527,48 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
         ),
     }
 
+    # Per-intent micro-instructions: override the stage escalation bias when the
+    # message energy doesn't warrant it. These sit above the stage hint so the
+    # model calibrates register before reading the stage goal.
+    _INTENT_MICRO_HINTS: dict[str, str] = {
+        "disengaged": (
+            "They barely replied. Match their energy exactly. One word or very short phrase is fine.\n"
+            "Do NOT escalate. Do NOT lead. Just hold space.\n"
+            "OK replies: 'yeah' / 'okay' / 'hm' / 'sure' / 'k'\n"
+            "WRONG: anything that tries to pull or tease from a dead response."
+        ),
+        "dry": (
+            "Short message. Reply short. 2–5 words max. Slightly playful or flat — not leading.\n"
+            "OK replies: 'haha maybe' / 'you're funny' / 'relax' / 'we'll see' / 'idk yet' / 'lol sure'\n"
+            "WRONG: 'moving fast, aren't we' / 'easy there' / anything that sounds like a scripted line."
+        ),
+        "flirty": (
+            "They're being flirty. Receive it simply. Do not over-react, do not gush, do not pitch.\n"
+            "OK replies: 'stop' / 'careful' / 'you're a bit forward' / 'lol okay' / 'haha hi'\n"
+            "WRONG: any scripted seduction line or abstract response."
+        ),
+        "aggressive": (
+            "They're pushing back or being challenging. Stay calm, slightly dry. Do not fight it.\n"
+            "OK replies: 'okay' / 'sure' / 'lol' / 'noted' / 'fair'\n"
+            "WRONG: defensive, explaining, arguing, or escalating."
+        ),
+        "curious": (
+            "They're asking or showing genuine interest. React to the specific question or statement first.\n"
+            "Direct answer first, then one short follow if needed.\n"
+            "WRONG: ignoring the question / changing topic / abstract line unrelated to what they asked."
+        ),
+    }
+
     hint = stage_hints.get(stage, stage_hints["warmup"])
     reply_intent = _classify_reply_intent(user_message)
+    intent_override = _INTENT_MICRO_HINTS.get(reply_intent, "")
     user_prompt = (
         f"[INTENT: {reply_intent}]\n"
-        f"They just said: {user_message}\n\n"
+        + (f"INTENT RULE:\n{intent_override}\n\n" if intent_override else "")
+        + f"They just said: {user_message}\n\n"
         f"{hint}\n\n"
-        "Your reply MUST directly react to their specific message — not the general vibe, the exact words.\n"
+        "CONTEXT CHECK: does your reply directly react to their exact words? "
         "If someone reading it would wonder what it has to do with their message → rewrite it.\n"
-        "Default flow: reaction to their message → short observation or tease → optional pull.\n"
-        "Do NOT lead with a question. Questions only if they create tension — never to gather information.\n"
         "1 to 2 lines. No quotation marks. No paragraphs."
     )
 
