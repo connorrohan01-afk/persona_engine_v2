@@ -23,6 +23,7 @@ from keyboards import (
 )
 from llm import (
     chat_reply,
+    is_natural_message,
     persona_message,
     pick_tease_asset,
     pick_image_pre_line,
@@ -971,7 +972,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Repeat test — call out the loop ──────────────────────────────────────
     if intent == "repeat_test":
-        reply = pick_line("repeat", context.user_data.get("recent_lines", []))
+        _rp_recent = context.user_data.get("recent_lines", [])
+        reply = pick_line("repeat", _rp_recent)
+        for _ in range(2):
+            if is_natural_message(reply):
+                break
+            reply = pick_line("repeat", _rp_recent)
         _track_response(context.user_data, "repeat", reply)
         await _type_and_send(context.bot, chat_id, reply)
         return

@@ -44,6 +44,51 @@ No em dashes.
 
 ---
 
+REALISM TEST — RUN BEFORE EVERY REPLY
+
+Ask: would a normal 20–25 year old girl actually text this?
+
+If it sounds written → rewrite it simpler.
+If it sounds deep or poetic → delete it, start over.
+If it sounds like a seduction script → wrong.
+If it sounds clever in a practiced way → wrong.
+
+Real texting is fast, reactive, slightly lazy, not perfect.
+
+WRITTEN (reject):
+  "there's more waiting for you"
+  "that was the safe version"
+  "you're playing the mystery card"
+  "i can see through you"
+  "you're not getting the rest that easy"
+  "there's more where that came from"
+  "i didn't show you everything"
+  "something about your energy"
+  "there's a version of me that"
+  "you got somewhere just now"
+  "we just crossed something"
+  "something just shifted"
+  "you have a way of"
+  "i'm unraveling"
+  "you pulled something out of me"
+
+TEXTED (accept):
+  "obviously"
+  "that was nothing"
+  "lol okay"
+  "yeah no"
+  "i know"
+  "you haven't seen it all"
+  "keep telling yourself that"
+  "yeah you are"
+  "you're getting there"
+  "i'm being careful"
+  "yeah well"
+
+When in doubt: say less. A shorter, dumber reply beats a clever written one.
+
+---
+
 TONE ROTATION — ANTI-SCRIPT
 
 Vary tone naturally across replies. Do not use the same register twice in a row.
@@ -344,6 +389,12 @@ say performance lines — these are unnatural and no real girl texts like this:
   i'm floating / what's your excuse / maybe i'll enlighten you later / something about how you said that / you intrigue me / there's something about you / i can feel your energy
 assume what the user is like before they've shown it — never say:
   i can tell what you're like / you're that type / i know what you want / i can already tell / i see what you're doing
+use abstract access framing — never say:
+  there's more waiting for you / that was the safe version / you're not getting the rest that easy /
+  there's more where that came from / i didn't show you everything / there's a version of me that /
+  what you're getting here isn't all of it / you got somewhere just now / we just crossed something /
+  something just shifted / you have a way of / something about your energy / you pulled something out of me
+sound written or crafted — if it sounds like a line from something, delete it and say something simpler
 
 ---
 
@@ -598,25 +649,192 @@ def _sanitize_output(text: str) -> str:
     return text.strip()
 
 
+# ── Natural language filter ───────────────────────────────────────────────────
+# is_natural_message() gates every LLM reply inside chat_reply().
+# A failed check triggers one regeneration at lower temperature with a
+# simpler prompt. sanitize_reply() is the last-mile catch for anything
+# that slips through the retry.
+
+# Hard-reject patterns — if any match, message is regenerated, not just cleaned.
+_NATURAL_BAN_PATTERNS: list[re.Pattern] = [
+    # ── From spec: hard blocked ────────────────────────────────────────────
+    re.compile(r"there'?s\s+more\b", re.I),
+    re.compile(r"you\s+haven'?t\s+seen\s+everything", re.I),
+    re.compile(r"that\s+was\s+just\s+a\s+preview", re.I),
+    re.compile(r"the\s+rest\s+is\s+somewhere\s+else", re.I),
+    re.compile(r"you'?re\s+making\s+me\s+work\s+for\s+it", re.I),
+    # ── Scripted reward / exclusivity framing ──────────────────────────────
+    re.compile(r"you\s+haven'?t\s+earned", re.I),
+    re.compile(r"only\s+a\s+select\s+few", re.I),
+    re.compile(r"most\s+people\s+don'?t\s+get\s+this\s+far", re.I),
+    re.compile(r"what\s+comes\s+next\s+isn'?t", re.I),
+    # ── AI narrator / state-shift language ─────────────────────────────────
+    re.compile(r"something\s+is\s+(brewing|building|shifting|changing|happening)\b", re.I),
+    re.compile(r"this\s+is\s+where\s+(things?|it)\s+(get|start|begin|change|shift)", re.I),
+    re.compile(r"the\s+(tension|energy|connection|chemistry)\s+(between|is|was)\b", re.I),
+    # ── "Essay" / over-polished openers ────────────────────────────────────
+    re.compile(r"^(well,?\s|honestly,?\s|truthfully,?\s|frankly,?\s)", re.I),
+    re.compile(r"^(the\s+truth\s+is|here'?s\s+the\s+thing|the\s+thing\s+is)\b", re.I),
+]
+
+# Words that inflate complexity — if present, reply sounds more "written" than "texted"
+_COMPLEX_WORD_SET: frozenset[str] = frozenset({
+    "furthermore", "nevertheless", "consequently", "subsequently", "therefore",
+    "whereas", "although", "despite", "regarding", "consider", "suggest",
+    "perhaps", "certainly", "genuinely", "essentially", "particularly",
+    "fascinating", "appreciate", "acknowledge", "recognize",
+    "mysterious", "enigmatic", "captivating", "mesmerizing",
+})
+
+_STOPWORDS: frozenset[str] = frozenset({
+    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
+    "of", "is", "it", "i", "you", "that", "this", "was", "are", "be",
+    "have", "had", "do", "did", "so", "we", "me", "my", "your", "he",
+    "she", "they", "up", "out", "not", "with", "from", "by", "as",
+})
+
+
+def _simplicity_score(text: str) -> float:
+    """Returns 0.0 (complex/written) to 1.0 (simple/natural texting).
+    Threshold used in is_natural_message: < 0.35 → reject."""
+    words = text.lower().split()
+    if not words:
+        return 1.0
+
+    score = 1.0
+
+    # Length — real texts are short
+    wc = len(words)
+    if wc > 20:
+        score -= 0.4
+    elif wc > 14:
+        score -= 0.2
+    elif wc > 10:
+        score -= 0.1
+
+    # Complex vocabulary
+    complex_hits = sum(
+        1 for w in words if w.rstrip(".,!?'") in _COMPLEX_WORD_SET
+    )
+    score -= complex_hits * 0.15
+
+    # Long words (>8 chars) — written language uses them, texting avoids them
+    long_words = sum(1 for w in words if len(w.rstrip(".,!?'")) > 8)
+    score -= long_words * 0.08
+
+    # Multiple sentences — real texts are usually one thought
+    sentence_endings = len(re.findall(r"[.!?]+", text))
+    if sentence_endings > 2:
+        score -= 0.2
+
+    # Comma-heavy → subordinate clauses → sounds written
+    if text.count(",") >= 2:
+        score -= 0.15
+
+    return max(0.0, min(1.0, score))
+
+
+def is_natural_message(text: str, user_message: str = "") -> bool:
+    """Returns True if reply sounds like casual human texting.
+    Returns False if scripted, abstract, polished, or context-unrelated.
+
+    Called inside chat_reply() before returning. A False triggers one
+    regeneration pass with a simplified prompt at lower temperature.
+    """
+    if not text or not text.strip():
+        return False
+
+    # ── Hard ban patterns — instant reject ────────────────────────────────
+    for pattern in _NATURAL_BAN_PATTERNS:
+        if pattern.search(text):
+            logger.debug(
+                "is_natural_message: ban pattern %r → %r",
+                pattern.pattern, text[:60],
+            )
+            return False
+
+    # ── Simplicity score gate ──────────────────────────────────────────────
+    score = _simplicity_score(text)
+    if score < 0.35:
+        logger.debug(
+            "is_natural_message: simplicity %.2f < 0.35 → %r", score, text[:60]
+        )
+        return False
+
+    # ── Context match: reply should share at least one significant word
+    #    with a substantive user message ────────────────────────────────────
+    if user_message:
+        user_sig = {
+            w.lower().rstrip(".,!?")
+            for w in user_message.split()
+            if len(w) > 3 and w.lower().rstrip(".,!?") not in _STOPWORDS
+        }
+        reply_sig = {
+            w.lower().rstrip(".,!?")
+            for w in text.split()
+            if len(w) > 3 and w.lower().rstrip(".,!?") not in _STOPWORDS
+        }
+        # Only flag when user said something substantive AND reply looks borderline
+        if len(user_sig) >= 3 and not (user_sig & reply_sig) and score < 0.55:
+            logger.debug(
+                "is_natural_message: zero context overlap (score=%.2f) "
+                "user=%r reply=%r", score, user_message[:40], text[:60],
+            )
+            return False
+
+    return True
+
+
 # ── Final output sanitizer — applied to every outgoing message ────────────────
 # Replacements fire in order. Patterns that remove a phrase leave whitespace
 # artifacts which are collapsed at the end.
 
 _PHRASE_REPLACEMENTS: list[tuple[re.Pattern, str]] = [
-    # Poetic / literary full-phrase replacements
+    # ── Poetic / literary full-phrase replacements ────────────────────────────
     (re.compile(r"there'?s\s+something\s+(intriguing|mysterious|enigmatic|interesting)\s+about\s+(that|this|you|it|how\s+you)", re.I), "haha what's that supposed to mean"),
     (re.compile(r"i\s+keep\s+you\s+guessing[,.]?\s*(don'?t\s+i\.?)?", re.I), "maybe"),
     (re.compile(r"you'?re\s+the\s+real\s+question\s+here", re.I), "nah what about you"),
     (re.compile(r"unraveling\s+something", re.I), "just chilling"),
-    # Analyzing how the user said something
+    # ── "There's a version of me / this" — abstract access framing ───────────
+    (re.compile(r"there'?s\s+a\s+version\s+of\s+(me|this)\s+(that|which)", re.I), ""),
+    (re.compile(r"you'?re\s+getting\s+the\s+careful\s+version\s+of\s+me", re.I), "i'm being careful"),
+    (re.compile(r"what\s+you'?re\s+getting\s+here\s+isn'?t\s+all\s+of\s+it", re.I), ""),
+    (re.compile(r"i'?m\s+a\s+lot\s+less\s+careful\s+when\s+i\s+decide\s+to\s+be", re.I), ""),
+    (re.compile(r"i\s+don'?t\s+show\s+the\s+same\s+things\s+to\s+everyone", re.I), ""),
+    # ── Generic seduction / access phrases ───────────────────────────────────
+    (re.compile(r"there'?s\s+more\s+waiting\s+for\s+you", re.I), "obviously"),
+    (re.compile(r"that\s+was\s+the\s+safe\s+version", re.I), "that was nothing"),
+    (re.compile(r"you'?re\s+not\s+getting\s+the\s+rest\s+that\s+easy", re.I), "yeah no"),
+    (re.compile(r"there'?s\s+more\s+where\s+that\s+came\s+from", re.I), "obviously"),
+    (re.compile(r"i\s+didn'?t\s+show\s+you\s+everything", re.I), "you haven't seen it all"),
+    (re.compile(r"you'?re\s+playing\s+the\s+mystery\s+card", re.I), "lol okay"),
+    (re.compile(r"i\s+can\s+see\s+through\s+you", re.I), "okay sure"),
+    (re.compile(r"you\s+can'?t\s+handle\s+the\s+real\s+me", re.I), "lol try me"),
+    # ── State-shift narration — AI-style "moment" language ───────────────────
+    (re.compile(r"something\s+just\s+shifted", re.I), ""),
+    (re.compile(r"we\s+just\s+crossed\s+something", re.I), ""),
+    (re.compile(r"this\s+is\s+where\s+it\s+stops\s+being\s+casual", re.I), ""),
+    (re.compile(r"we'?re\s+not\s+in\s+the\s+same\s+place\s+we\s+were", re.I), ""),
+    (re.compile(r"something\s+shifted\s+and\s+you\s+can\s+probably\s+feel\s+it", re.I), ""),
+    # ── "You got somewhere / moved this" — scripted reward language ──────────
+    (re.compile(r"you\s+got\s+somewhere\s+just\s+now", re.I), "yeah you are"),
+    (re.compile(r"you\s+moved\s+this\s+somewhere\s+i\s+didn'?t\s+see\s+coming", re.I), ""),
+    (re.compile(r"you\s+pulled\s+something\s+out\s+of\s+me", re.I), ""),
+    # ── Analyzing how the user said something ────────────────────────────────
     (re.compile(r"(the\s+way|i\s+like\s+how)\s+you\s+(said|put|phrased|worded)\s+that", re.I), ""),
     (re.compile(r"there'?s\s+something\s+about\s+how\s+you", re.I), ""),
-    # Single-word literary terms — remove outright
+    (re.compile(r"something\s+about\s+your\s+energy", re.I), ""),
+    (re.compile(r"you\s+have\s+a\s+way\s+of", re.I), ""),
+    # ── Single-word literary terms — remove outright ─────────────────────────
     (re.compile(r"\b(enigmatic|enigma|unraveling|unfolding|mesmerizing|captivating|intriguing|ever.mysterious)\b", re.I), ""),
-    # "mysterious" only when used as a descriptor (not in "direct message" etc.)
     (re.compile(r"\b(so\s+mysterious|very\s+mysterious|quite\s+mysterious|the\s+mysterious|this\s+mysterious)\b", re.I), ""),
-    # Over-explaining openers
+    # ── Over-explaining openers ───────────────────────────────────────────────
     (re.compile(r"what\s+i\s+mean\s+(by\s+that\s+is|is\s+that)\s*", re.I), ""),
+    # ── Spec hard-bans not yet in replacements ────────────────────────────────
+    (re.compile(r"you\s+haven'?t\s+seen\s+everything", re.I), "you haven't seen it all"),
+    (re.compile(r"that\s+was\s+just\s+a\s+preview", re.I), "that was nothing"),
+    (re.compile(r"the\s+rest\s+is\s+somewhere\s+else", re.I), ""),
+    (re.compile(r"you'?re\s+making\s+me\s+work\s+for\s+it", re.I), "okay fine"),
 ]
 
 _MAX_REPLY_CHARS = 160   # messages longer than this get trimmed to 2 sentences
@@ -1226,80 +1444,77 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
         {"role": "user", "content": user_prompt},
     ]
 
-    async def _call(temperature: float) -> str:
+    # Temperatures for each attempt: start warm, cool down on retries
+    _TEMPS = (0.9, 0.75, 0.65)
+    _MAX_ATTEMPTS = len(_TEMPS)
+
+    async def _call(temperature: float, override_messages: list | None = None) -> str:
         response = await _client.chat.completions.create(
             model="gpt-3.5-turbo",
             max_tokens=80,
             temperature=temperature,
-            messages=messages,
+            messages=override_messages or messages,
         )
         return response.choices[0].message.content.strip()
 
-    try:
-        result = _sanitize_output(await _call(temperature=0.9))
+    def _build_retry_prompt(failed: str, attempt: int) -> str:
+        """Return a retry prompt appropriate for why the reply failed."""
+        if _is_dead_response(failed, stage) and stage in _VAULT_STAGES:
+            return (
+                f"{user_prompt}\n\n"
+                "Your previous reply failed. Delete it. Rewrite from scratch.\n"
+                "QUALITY TEST — fail any of these and rewrite again:\n"
+                "  (1) Could this line be sent in any other conversation? → fail\n"
+                "  (2) Does it feel like filler before a sale? → fail\n"
+                "  (3) Does it vaguely suggest something without emotional framing? → fail\n"
+                "  (4) Does it resemble a CTA in any form? → fail\n"
+                "REQUIRED: reference the user's specific action or energy from their last message. "
+                "Create a shift. Make the moment feel earned or provoked by them specifically.\n"
+                "FORBIDDEN: 'check this out' / 'something you might like' / 'found something' / "
+                "'worth checking out' / anything that teases content without emotional specificity.\n"
+                "One line. No quotation marks."
+            )
+        # Natural / general failure — ask for simpler text
+        return (
+            f"They just said: {user_message}\n\n"
+            "Your last reply sounded too written or scripted. Rewrite it as a casual text.\n"
+            f"FAILED REPLY (do not reuse): {failed!r}\n"
+            "RULE: would a normal 20-25 year old girl actually text this? if no → rewrite simpler.\n"
+            "BANNED: 'there's more' / scripted lines / poetic phrases / anything that sounds clever.\n"
+            "Say less. Be direct. React to exactly what they said.\n"
+            "One line. Lowercase. Slightly lazy. Not crafted."
+        )
 
-        if _is_dead_response(result, stage):
-            logger.debug("Dead response detected (%r), retrying stage=%s", result, stage)
-            if stage in _VAULT_STAGES:
-                retry_prompt = (
-                    f"{user_prompt}\n\n"
-                    "Your previous reply failed. Delete it. Rewrite from scratch.\n"
-                    "QUALITY TEST — fail any of these and rewrite again:\n"
-                    "  (1) Could this line be sent in any other conversation? → fail\n"
-                    "  (2) Does it feel like filler before a sale? → fail\n"
-                    "  (3) Does it vaguely suggest something without emotional framing? → fail\n"
-                    "  (4) Does it resemble a CTA in any form? → fail\n"
-                    "REQUIRED: reference the user's specific action or energy from their last message. "
-                    "Create a shift. Make the moment feel earned or provoked by them specifically.\n"
-                    "FORBIDDEN: 'check this out' / 'something you might like' / 'found something' / "
-                    "'worth checking out' / anything that teases content without emotional specificity.\n"
-                    "This must feel like tension and a shift in dynamic. Not an offer. Not a pitch. "
-                    "Specific. Reactive. Non-reusable.\n"
-                    "One line. No quotation marks."
+    try:
+        candidate = _sanitize_output(await _call(_TEMPS[0]))
+
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            natural_ok = is_natural_message(candidate, user_message)
+            dead = _is_dead_response(candidate, stage)
+
+            if natural_ok and not dead:
+                break  # reply passes all checks — send it
+
+            if attempt >= _MAX_ATTEMPTS:
+                logger.warning(
+                    "reply_loop: all %d attempts failed stage=%s last=%r",
+                    _MAX_ATTEMPTS, stage, candidate[:60],
                 )
-            else:
-                retry_prompt = (
-                    f"{user_prompt}\n\n"
-                    "Your previous reply was wrong. Rewrite it completely.\n"
-                    "Rules: no lifestyle questions, no interview questions, no warm openers, "
-                    "no paragraphs, no exclamation, no 'that's so interesting', no 'i'd love to', "
-                    "no customer service tone. Short, sharp, in character. "
-                    "Tease, observe, or imply. Do not ask about their life.\n"
-                    "SIMPLICITY FILTER: is this something a normal girl would text? am i trying too hard? "
-                    "does this sound like a line instead of a message? if yes → simplify.\n"
-                    "  wrong: 'i'm unraveling mysteries. you're next' → right: 'haha you don't even know yet'\n"
-                    "  wrong: 'figuring out the secrets you're not telling' → right: 'you're a bit hard to read ngl'\n"
-                    "  wrong: 'is that a promise or a warning' → right: 'we'll see about that'\n"
-                    "  wrong: 'you're moving too fast, let's slow things down' → right: 'slow down haha'\n"
-                    "  wrong: 'that resistance is intriguing' → right: 'sure lol'\n"
-                    "  wrong: 'i sense a mystery in your how you doing' → right: 'not much. you'\n"
-                    "  wrong: 'the ever mysterious ha' → right: 'lol okay'\n"
-                    "  wrong: 'unraveling some enigma' → right: 'you're hard to read'\n"
-                    "  wrong: 'what's next in this unfolding adventure?' → right: 'what else'\n"
-                    "BANNED WORDS: mystery / mysterious / enigma / intriguing / unraveling / unfolding / adventure / uncovering — "
-                    "if any of these appear → rewrite.\n"
-                    "SIMPLE MESSAGE RULE: if the user sent 'ha', 'ok', 'yeah', 'lol', 'nothing', 'what' — reply simply. "
-                    "do NOT treat it as mysterious, poetic, or deep.\n"
-                    "TEXTING CHECK: casual, natural, slightly imperfect. not poetic. not a quote. not a performance.\n"
-                    "INCONSISTENCY RULE: you are not always 'on'. sometimes be simple, dry, or neutral — that's more real.\n"
-                    "FORBIDDEN STYLE: 'there's something intriguing' / 'you're stepping into' / "
-                    "'i find you fascinating' / anything that sounds scripted or performed.\n"
-                    "One line max. No quotation marks."
-                )
-            messages_retry = [
+                break
+
+            logger.debug(
+                "reply_loop: attempt %d failed (natural=%s dead=%s) stage=%s reply=%r",
+                attempt, natural_ok, dead, stage, candidate[:60],
+            )
+            retry_prompt = _build_retry_prompt(candidate, attempt)
+            retry_msgs = [
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 *history_slice,
                 {"role": "user", "content": retry_prompt},
             ]
-            retry_response = await _client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                max_tokens=80,
-                temperature=1.0,
-                messages=messages_retry,
-            )
-            result = _sanitize_output(retry_response.choices[0].message.content.strip())
+            candidate = _sanitize_output(await _call(_TEMPS[attempt], override_messages=retry_msgs))
 
-        return result
+        return candidate
 
     except Exception as exc:
         logger.error("LLM chat_reply failed stage=%s: %s", stage, exc)
