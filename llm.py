@@ -4,6 +4,7 @@ Never controls state, delivery, or payment logic.
 Returns plain strings that handlers inject into messages.
 """
 
+import asyncio
 import logging
 import os
 import random
@@ -785,6 +786,61 @@ def is_natural_message(text: str, user_message: str = "") -> bool:
     return True
 
 
+# ── Reply intent classifier ───────────────────────────────────────────────────
+# Injected into the user_prompt so the model has explicit behavioral context
+# before choosing a response style — not a stage hint, just "what just happened".
+
+_AGGRESSIVE_WORDS: frozenset[str] = frozenset({
+    "whatever", "boring", "fake", "bot", "scam", "stupid", "dumb", "loser",
+})
+_FLIRTY_WORDS: frozenset[str] = frozenset({
+    "hot", "sexy", "gorgeous", "beautiful", "cute", "pretty", "stunning",
+})
+
+
+def _classify_reply_intent(text: str) -> str:
+    """Return a short label describing what kind of message the user just sent.
+
+    Labels: curious / flirty / dry / aggressive / disengaged
+    Injected as [INTENT: X] into the LLM user_prompt so the model can adapt
+    its response type before choosing a register.
+    """
+    text_lower = text.lower().strip()
+    words = set(text_lower.split())
+    word_count = len(words)
+
+    if words & _AGGRESSIVE_WORDS or any(
+        p in text_lower for p in ("you're not real", "you're a bot", "this is fake")
+    ):
+        return "aggressive"
+
+    if words & _FLIRTY_WORDS or any(
+        p in text_lower for p in ("you're so", "ur so", "you sound amazing", "you look so")
+    ):
+        return "flirty"
+
+    if "?" in text or any(
+        p in text_lower for p in (
+            "tell me", "show me", "what is", "what do", "what's",
+            "how do", "more about", "want to know",
+        )
+    ):
+        return "curious"
+
+    # Short engagement words ("lol", "haha", "nice") → dry, not disengaged
+    _engagement_words = {"lol", "haha", "lmao", "omg", "nice", "damn", "wow", "hm", "hmm"}
+    if words & _engagement_words:
+        return "dry"
+
+    if word_count <= 1:
+        return "disengaged"
+
+    if word_count <= 3:
+        return "dry"
+
+    return "curious"
+
+
 # ── Final output sanitizer — applied to every outgoing message ────────────────
 # Replacements fire in order. Patterns that remove a phrase leave whitespace
 # artifacts which are collapsed at the end.
@@ -994,13 +1050,13 @@ _POST_TEASE_FOLLOW_LINES: list[str] = [
 ]
 
 # Vault transition lines — sent after user replies to the post-tease follow.
-# Must imply "there's more" without asking or pitching directly.
+# Must imply "there's more" without matching any banned phrases in sanitize_reply.
 _VAULT_TRANSITION_LINES: list[str] = [
-    "there's more. just not here",
-    "that was the safe version",
-    "you're not getting the rest that easy",
-    "that was just a preview tbh",
-    "the rest is somewhere else",
+    "you haven't seen all of it",
+    "not everything's in here",
+    "there's stuff you haven't seen yet",
+    "this isn't the whole thing",
+    "you're only getting part of it",
 ]
 
 
@@ -1427,13 +1483,15 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
     }
 
     hint = stage_hints.get(stage, stage_hints["warmup"])
+    reply_intent = _classify_reply_intent(user_message)
     user_prompt = (
+        f"[INTENT: {reply_intent}]\n"
         f"They just said: {user_message}\n\n"
         f"{hint}\n\n"
-        "Your reply must directly connect to what they just said. "
-        "If someone reading it would wonder what it has to do with their message, rewrite it. "
-        "Default flow: reaction to their message → short observation or tease → optional pull. "
-        "Do NOT lead with a question. Questions only if they create tension — never to gather information. "
+        "Your reply MUST directly react to their specific message — not the general vibe, the exact words.\n"
+        "If someone reading it would wonder what it has to do with their message → rewrite it.\n"
+        "Default flow: reaction to their message → short observation or tease → optional pull.\n"
+        "Do NOT lead with a question. Questions only if they create tension — never to gather information.\n"
         "1 to 2 lines. No quotation marks. No paragraphs."
     )
 
@@ -1444,10 +1502,6 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
         {"role": "user", "content": user_prompt},
     ]
 
-    # Temperatures for each attempt: start warm, cool down on retries
-    _TEMPS = (0.9, 0.75, 0.65)
-    _MAX_ATTEMPTS = len(_TEMPS)
-
     async def _call(temperature: float, override_messages: list | None = None) -> str:
         response = await _client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -1457,7 +1511,17 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
         )
         return response.choices[0].message.content.strip()
 
-    def _build_retry_prompt(failed: str, attempt: int) -> str:
+    def _score_candidate(text: str) -> float:
+        """Higher = better. Dead replies score -1.0; ban-pattern hits lose 0.5."""
+        if _is_dead_response(text, stage):
+            return -1.0
+        score = _simplicity_score(text)
+        for pattern in _NATURAL_BAN_PATTERNS:
+            if pattern.search(text):
+                score -= 0.5
+        return score
+
+    def _build_retry_prompt(failed: str) -> str:
         """Return a retry prompt appropriate for why the reply failed."""
         if _is_dead_response(failed, stage) and stage in _VAULT_STAGES:
             return (
@@ -1474,8 +1538,8 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
                 "'worth checking out' / anything that teases content without emotional specificity.\n"
                 "One line. No quotation marks."
             )
-        # Natural / general failure — ask for simpler text
         return (
+            f"[INTENT: {reply_intent}]\n"
             f"They just said: {user_message}\n\n"
             "Your last reply sounded too written or scripted. Rewrite it as a casual text.\n"
             f"FAILED REPLY (do not reuse): {failed!r}\n"
@@ -1486,33 +1550,34 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
         )
 
     try:
-        candidate = _sanitize_output(await _call(_TEMPS[0]))
+        # ── Variation system: 3 parallel candidates, pick the most natural ────
+        raw = await asyncio.gather(
+            _call(0.9),
+            _call(0.85),
+            _call(0.95),
+            return_exceptions=True,
+        )
+        candidates = [_sanitize_output(r) for r in raw if isinstance(r, str)]
 
-        for attempt in range(1, _MAX_ATTEMPTS + 1):
-            natural_ok = is_natural_message(candidate, user_message)
-            dead = _is_dead_response(candidate, stage)
+        if not candidates:
+            raise RuntimeError("all parallel generation calls failed")
 
-            if natural_ok and not dead:
-                break  # reply passes all checks — send it
+        # Sort by quality score — highest first
+        candidates.sort(key=_score_candidate, reverse=True)
+        candidate = candidates[0]
 
-            if attempt >= _MAX_ATTEMPTS:
-                logger.warning(
-                    "reply_loop: all %d attempts failed stage=%s last=%r",
-                    _MAX_ATTEMPTS, stage, candidate[:60],
-                )
-                break
-
+        # If best candidate still fails, one focused retry at lower temperature
+        if not is_natural_message(candidate, user_message) or _is_dead_response(candidate, stage):
             logger.debug(
-                "reply_loop: attempt %d failed (natural=%s dead=%s) stage=%s reply=%r",
-                attempt, natural_ok, dead, stage, candidate[:60],
+                "variation_pick: best of %d below threshold stage=%s reply=%r",
+                len(candidates), stage, candidate[:60],
             )
-            retry_prompt = _build_retry_prompt(candidate, attempt)
             retry_msgs = [
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 *history_slice,
-                {"role": "user", "content": retry_prompt},
+                {"role": "user", "content": _build_retry_prompt(candidate)},
             ]
-            candidate = _sanitize_output(await _call(_TEMPS[attempt], override_messages=retry_msgs))
+            candidate = _sanitize_output(await _call(0.7, override_messages=retry_msgs))
 
         return candidate
 

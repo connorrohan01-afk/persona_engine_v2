@@ -1016,10 +1016,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         intent_level = _classify_intent_level(text, intent, signal)
         stage = _maybe_advance_stage(context.user_data, intent, signal, intent_level)
 
-        # Transition to BUILD after hook turns completed
-        if turn_count >= _HOOK_TURNS:
+        # Non-linear HOOK→BUILD: advance early on genuine engagement, hard cap at _HOOK_TURNS
+        _hook_advance = (
+            turn_count >= _HOOK_TURNS
+            or (turn_count >= 2 and intent_level in ("mid", "high"))
+        )
+        if _hook_advance:
             await db.set_user_state(user_id, State.BUILD)
-            logger.info("state: HOOK → BUILD at turn=%d", turn_count)
+            logger.info("state: HOOK → BUILD at turn=%d intent_level=%s", turn_count, intent_level)
 
         if intent == "dry" and "?" not in text:
             reply = await chat_reply(text, context={"stage": "dry"}, history=history)
