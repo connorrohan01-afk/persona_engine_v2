@@ -409,6 +409,7 @@ use abstract access framing — never say:
   something just shifted / you have a way of / something about your energy / you pulled something out of me
 sound written or crafted — if it sounds like a line from something, delete it and say something simpler
 try to sound smooth — smooth = scripted. real texting is slightly imperfect, not polished
+mirror the user's wording or structure — if they said "you noticed that huh", do NOT say "yeah I noticed that huh" or end with "huh". reframe it entirely: "maybe" / "took you a second" / "you're catching on"
 
 ---
 
@@ -421,6 +422,7 @@ Is warmth earned?
 Does it sound like a quote, a movie line, or something "deep"? → if yes, delete it and write something simpler.
 Would this reply still make sense if the user had said something completely different? → if yes, it's wrong — rewrite it.
 Am I escalating because they gave me a reason, or because it's the "next step"? → if next step → don't escalate.
+Did I echo the user's exact words or sentence structure back at them? → if yes, rewrite with different phrasing.
 
 No to any of the above: rewrite.
 """
@@ -728,6 +730,65 @@ _STOPWORDS: frozenset[str] = frozenset({
 })
 
 
+# ── Anti-mirroring ───────────────────────────────────────────────────────────
+# Detects when a reply echoes the user's own wording, structure, or end pattern.
+
+_MIRROR_HUH = re.compile(r"\bhuh\s*\??$", re.I)
+_MIRROR_YEAH = re.compile(r"^yeah\b", re.I)
+
+
+def _is_mirroring(reply: str, user_message: str) -> bool:
+    """Return True if the reply echoes the user's wording or sentence structure.
+
+    Three checks:
+    1. 'huh' echo — reply ends in 'huh' and user also used 'huh'
+    2. 'yeah [user_word]' opener — reply opens by repeating a significant user word
+    3. High word overlap in short replies — ≥60% of reply's key words came from user
+
+    Only applied when user_message is non-empty.
+    """
+    if not reply or not user_message:
+        return False
+
+    r = reply.lower().strip().rstrip(".,?!")
+    u = user_message.lower().strip()
+
+    # 1. "huh" echo: reply ends in "huh" and user contained "huh"
+    if _MIRROR_HUH.search(r) and "huh" in u:
+        return True
+
+    # 2. "yeah [user_significant_word]" — user word echoed immediately after "yeah"
+    if _MIRROR_YEAH.match(r):
+        r_words = r.split()
+        if len(r_words) > 1:
+            echo_word = r_words[1].rstrip(".,!?'")
+            u_sig = {
+                w.rstrip(".,!?'") for w in u.split()
+                if len(w) > 3 and w.rstrip(".,!?'") not in _STOPWORDS
+            }
+            if len(echo_word) > 3 and echo_word in u_sig:
+                return True
+
+    # 3. High overlap in short replies (≤6 words): ≥2 shared significant words AND
+    #    those shared words make up ≥60% of the reply's significant words
+    r_words_list = r.split()
+    if len(r_words_list) <= 6:
+        r_sig = {
+            w.rstrip(".,!?'") for w in r_words_list
+            if len(w) > 3 and w.rstrip(".,!?'") not in _STOPWORDS
+        }
+        u_sig = {
+            w.rstrip(".,!?'") for w in u.split()
+            if len(w) > 3 and w.rstrip(".,!?'") not in _STOPWORDS
+        }
+        if r_sig and u_sig:
+            overlap = len(r_sig & u_sig)
+            if overlap >= 2 and overlap / len(r_sig) >= 0.6:
+                return True
+
+    return False
+
+
 def _simplicity_score(text: str) -> float:
     """Returns 0.0 (complex/written) to 1.0 (simple/natural texting).
     Threshold used in is_natural_message: < 0.35 → reject."""
@@ -792,6 +853,14 @@ def is_natural_message(text: str, user_message: str = "") -> bool:
     if score < 0.35:
         logger.debug(
             "is_natural_message: simplicity %.2f < 0.35 → %r", score, text[:60]
+        )
+        return False
+
+    # ── Mirror check — reject replies that echo the user's own wording ───────
+    if user_message and _is_mirroring(text, user_message):
+        logger.debug(
+            "is_natural_message: mirror detected user=%r reply=%r",
+            user_message[:40], text[:60],
         )
         return False
 
@@ -1589,13 +1658,15 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
         return response.choices[0].message.content.strip()
 
     def _score_candidate(text: str) -> float:
-        """Higher = better. Dead replies score -1.0; ban-pattern hits lose 0.5."""
+        """Higher = better. Dead replies score -1.0; ban-pattern hits lose 0.5; mirrors lose 0.4."""
         if _is_dead_response(text, stage):
             return -1.0
         score = _simplicity_score(text)
         for pattern in _NATURAL_BAN_PATTERNS:
             if pattern.search(text):
                 score -= 0.5
+        if _is_mirroring(text, user_message):
+            score -= 0.4
         return score
 
     def _build_retry_prompt(failed: str) -> str:
@@ -1614,6 +1685,18 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
                 "FORBIDDEN: 'check this out' / 'something you might like' / 'found something' / "
                 "'worth checking out' / anything that teases content without emotional specificity.\n"
                 "One line. No quotation marks."
+            )
+        if _is_mirroring(failed, user_message):
+            return (
+                f"[INTENT: {reply_intent}]\n"
+                f"They just said: {user_message}\n\n"
+                "Your last reply mirrored the user's own wording or structure. Do not do that.\n"
+                f"MIRRORED REPLY (do not reuse or echo): {failed!r}\n"
+                "RULE: use completely different words. Do NOT repeat their phrasing.\n"
+                "If they ended with 'huh' → do NOT end with 'huh'.\n"
+                "If they said 'you noticed' → do NOT say 'yeah I noticed'.\n"
+                "Reframe it: 'maybe' / 'took you a second' / 'you're catching on' / 'we'll see'\n"
+                "One line. Different words. Not a reflection."
             )
         return (
             f"[INTENT: {reply_intent}]\n"
