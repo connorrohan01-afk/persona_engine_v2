@@ -72,6 +72,16 @@ WRITTEN (reject):
   "you have a way of"
   "i'm unraveling"
   "you pulled something out of me"
+  "you're a tough cookie"
+  "figuring you out slowly"
+  "i like your vibe"
+  "there's more to you"
+  "you're an interesting one"
+  "you have a way with words"
+  "i'm trying to understand you"
+  "you're quite something"
+  "i like how you think"
+  "you always know what to say"
 
 TEXTED (accept):
   "obviously"
@@ -85,8 +95,21 @@ TEXTED (accept):
   "you're getting there"
   "i'm being careful"
   "yeah well"
+  "you're funny"
+  "idk about that"
+  "you wish"
+  "stop"
+  "we'll see"
+  "still figuring you out"
+  "okay sure"
+  "not really"
 
 When in doubt: say less. A shorter, dumber reply beats a clever written one.
+
+Partial thoughts beat complete sentences:
+"still figuring you out" beats "i'm slowly starting to understand who you are"
+"you're something" beats "there's more to you than meets the eye"
+"idk" beats "i'm not quite sure what to make of you"
 
 ---
 
@@ -639,6 +662,18 @@ _DEAD_OPENERS = (
     "is that so",
     "aren't you",
     "my my",
+    # NPC / written dialogue openers — hard banned
+    "you're a tough",
+    "figuring you out",
+    "i like your vibe",
+    "i like how you",
+    "you have a way with",
+    "you're an interesting",
+    "there's more to you",
+    "i'm slowly figuring",
+    "i'm trying to understand",
+    "you're quite something",
+    "you always know",
     # Regressed AI/literary openers — hard banned
     "i sense a",
     "the ever",
@@ -711,6 +746,14 @@ _NATURAL_BAN_PATTERNS: list[re.Pattern] = [
     re.compile(r"\blook\s+at\s+you\b", re.I),
     re.compile(r"\bwell\s+well\s+well\b", re.I),
     re.compile(r"\bis\s+that\s+so\b", re.I),
+    # ── NPC / written dialogue — hard reject ───────────────────────────────
+    re.compile(r"you'?re\s+a\s+tough\s+cookie", re.I),
+    re.compile(r"i\s+like\s+your\s+vibe\b", re.I),
+    re.compile(r"i'?m\s+(slowly\s+)?figuring\s+you\s+out\b", re.I),
+    re.compile(r"you\s+have\s+a\s+way\s+with\s+words", re.I),
+    re.compile(r"you'?re\s+an\s+interesting\s+(one|person)\b", re.I),
+    re.compile(r"i'?m\s+trying\s+to\s+understand\s+you", re.I),
+    re.compile(r"you\s+always\s+know\s+what\s+to\s+say", re.I),
 ]
 
 # Words that inflate complexity — if present, reply sounds more "written" than "texted"
@@ -993,6 +1036,18 @@ _PHRASE_REPLACEMENTS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"that\s+was\s+just\s+a\s+preview", re.I), "that was nothing"),
     (re.compile(r"the\s+rest\s+is\s+somewhere\s+else", re.I), ""),
     (re.compile(r"you'?re\s+making\s+me\s+work\s+for\s+it", re.I), "okay fine"),
+    # ── NPC / written dialogue → casual equivalents ──────────────────────────
+    (re.compile(r"you'?re\s+a\s+tough\s+cookie", re.I), "okay"),
+    (re.compile(r"there'?s\s+more\s+to\s+you\s+than\s+meets\s+the\s+eye", re.I), ""),
+    (re.compile(r"there'?s\s+more\s+to\s+you\b", re.I), ""),
+    (re.compile(r"i'?m\s+figuring\s+you\s+out\s+slowly", re.I), "still figuring you out"),
+    (re.compile(r"i\s+like\s+your\s+vibe\b", re.I), "you're alright"),
+    (re.compile(r"you\s+have\s+a\s+way\s+with\s+words", re.I), ""),
+    (re.compile(r"you'?re\s+an\s+interesting\s+(one|person)\b", re.I), "okay"),
+    (re.compile(r"i'?m\s+trying\s+to\s+understand\s+you", re.I), "still figuring you out"),
+    (re.compile(r"you'?re\s+quite\s+something\b", re.I), "okay"),
+    (re.compile(r"i\s+like\s+how\s+you\s+think\b", re.I), ""),
+    (re.compile(r"you\s+always\s+know\s+what\s+to\s+say", re.I), "stop"),
     # ── AI-template / chatbot scripted lines ─────────────────────────────────
     (re.compile(r"moving\s+fast,?\s+aren'?t\s+we", re.I), "okay relax"),
     (re.compile(r"we'?re\s+moving\s+(pretty\s+)?fast", re.I), "okay relax"),
@@ -1091,6 +1146,17 @@ _GENERAL_BANNED_SUBSTRINGS = (
     "the adventure",
     "what's next in this",
     "what's next on this",
+    # NPC / written dialogue — banned everywhere
+    "you're a tough cookie",
+    "there's more to you",
+    "figuring you out slowly",
+    "i like your vibe",
+    "you have a way with words",
+    "you're an interesting one",
+    "i'm trying to understand you",
+    "you're quite something",
+    "i like how you think",
+    "you always know what to say",
 )
 
 _VAULT_STAGES = {"partial_reveal", "earned_access"}
