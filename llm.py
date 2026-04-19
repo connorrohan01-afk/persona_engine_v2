@@ -1366,6 +1366,11 @@ _GENERAL_BANNED_SUBSTRINGS = (
     "that's fascinating",
     "how intriguing",
     "what a way to",
+    # Buyer-intent vague dodges — banned in all responses
+    "trust me it's worth it",
+    "you'd be missing out",
+    "you'll see when you get it",
+    "it's a surprise",
     # Forced pivot / vault-push during chaotic conversation
     "check this out",
     "anyway here's something",
@@ -1626,6 +1631,21 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "haha okay",
             "fair",
             "you might later",
+        ],
+        "answer_intent": [
+            "private photos. the ones i don't post",
+            "it's a set. more personal than what's public",
+            "photos i don't share anywhere else. that's the short version",
+            "stuff i only send to people who actually ask",
+            "a private collection. not the filtered version",
+            "photos that aren't online anywhere. just here",
+            "more personal stuff. things i don't put out publicly",
+            "the side of me that doesn't go public",
+            "because it's not the same as what's free",
+            "you don't have to. but you won't find this anywhere else",
+            "it's not public content. that's why",
+            "that's up to you. but nobody gets this for free",
+            "because there's a reason it's not out there",
         ],
         "soft_retain": [
             "fair… you're a tough one",
@@ -1963,10 +1983,23 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "WRONG: treating it as meaningful / asking what they meant / trying to respond to the content."
         ),
         "answer_intent": (
-            "They asked a direct question about content or what they get. Answer it briefly and honestly.\n"
-            "Do NOT tease or withhold. Do NOT redirect to buying. Just answer what they asked.\n"
-            "OK: 'yeah it's photos' / 'more personal stuff' / 'depends which pack'\n"
-            "WRONG: 'you'll see' / 'that's the surprise' / anything that avoids the question."
+            "They asked what they're buying / what's in it / why they'd pay. Give PARTIAL CLARITY — not vague, not a full pitch.\n"
+            "\n"
+            "WHAT TO INCLUDE (pick one angle per reply — vary across turns):\n"
+            "  TYPE: name the content briefly — 'private photos' / 'a private set' / 'personal content'\n"
+            "  ACCESS GAP: why it's not free — 'stuff i don't post' / 'doesn't go anywhere else' / 'not the public version'\n"
+            "  DIFFERENCE: how it's different — 'more real' / 'different side of me' / 'less filtered'\n"
+            "  MILD PUSHBACK: if they're challenging — 'because it's not the same as what's free' / 'nobody gets this for free'\n"
+            "\n"
+            "RULES:\n"
+            "  — Two lines maximum. This is texting.\n"
+            "  — Slight attitude is fine: 'that's why' / 'if you have to ask'\n"
+            "  — Vary phrasing every time — do NOT reuse the same angle\n"
+            "  — Do NOT over-explain. Do NOT list contents. Do NOT pitch it.\n"
+            "\n"
+            "OK: 'private photos. the ones i don't post' / 'stuff i only share here' / 'the side of me that doesn't go public'\n"
+            "OK: 'because it's not the same as what's free' / 'you won't find this anywhere else'\n"
+            "WRONG: 'you'll see' / 'there's more' / 'not yet' / 'trust me it's worth it' / 'you'd be missing out' / any vague dodge."
         ),
         "soft_retain": (
             "They lightly pushed back or said they're not sure. Do NOT repeat the offer. Do NOT argue or defend.\n"
