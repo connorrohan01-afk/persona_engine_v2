@@ -662,6 +662,15 @@ _DEAD_OPENERS = (
     "is that so",
     "aren't you",
     "my my",
+    # Context-free generic openers — hard banned
+    "the mystery",
+    "you always ask",
+    "i figured as",
+    "interesting choice",
+    "full of surprises",
+    "you never disappoint",
+    "that's what they",
+    "i knew you'd",
     # NPC / written dialogue openers — hard banned
     "you're a tough",
     "figuring you out",
@@ -943,47 +952,83 @@ _FLIRTY_WORDS: frozenset[str] = frozenset({
 })
 
 
-def _classify_reply_intent(text: str) -> str:
-    """Return a short label describing what kind of message the user just sent.
+_QUESTION_STARTERS: frozenset[str] = frozenset({
+    "what", "why", "how", "where", "when", "who", "which",
+    "is", "are", "do", "does", "can", "will", "would", "could", "should",
+})
+_SEXUAL_WORDS: frozenset[str] = frozenset({
+    "nude", "naked", "nudes", "fuck", "fucking", "sex", "horny",
+    "pussy", "dick", "cock", "tits", "boobs", "nsfw",
+})
+_ENGAGEMENT_WORDS: frozenset[str] = frozenset({
+    "lol", "haha", "lmao", "omg", "nice", "damn", "wow", "hm", "hmm",
+    "ok", "okay", "kk", "k",
+})
+_PUSHY_PHRASES = (
+    "come on", "just show me", "stop teasing", "stop playing",
+    "hurry up", "show me now", "just do it", "quit playing",
+    "stop being", "just send", "stop wasting",
+)
+_DISENGAGE_WORDS: frozenset[str] = frozenset({
+    "bye", "goodbye", "cya", "ttyl", "gtg", "leaving",
+})
+# Bare-punctuation / single-token confusion signals
+_CONFUSED_TOKENS: frozenset[str] = frozenset({
+    "?", "??", "???", "...", "huh", "wut", "wha", "hm?",
+})
 
-    Labels: curious / flirty / dry / aggressive / disengaged
-    Injected as [INTENT: X] into the LLM user_prompt so the model can adapt
-    its response type before choosing a register.
+
+def _classify_reply_intent(text: str) -> str:
+    """Classify user message into one of 9 behavioral intent categories.
+
+    Labels: question / statement / flirty / sexual / pushy / aggressive / confused / low_effort / disengaged
+    Injected as [INTENT: X] into the LLM user_prompt so the model responds appropriately.
     """
     text_lower = text.lower().strip()
     words = set(text_lower.split())
-    word_count = len(words)
+    word_list = text_lower.split()
+    word_count = len(word_list)
 
+    # Disengaged: explicit exit signals — checked first
+    if words & _DISENGAGE_WORDS or any(
+        p in text_lower for p in ("not interested", "gotta go", "talk later")
+    ):
+        return "disengaged"
+
+    # Confused: bare punctuation or a single unclear token
+    if text_lower in _CONFUSED_TOKENS:
+        return "confused"
+
+    # Aggressive: hostile, skeptical, or bot-accusing
     if words & _AGGRESSIVE_WORDS or any(
         p in text_lower for p in ("you're not real", "you're a bot", "this is fake")
     ):
         return "aggressive"
 
+    # Sexual: explicitly sexual content
+    if words & _SEXUAL_WORDS:
+        return "sexual"
+
+    # Pushy: demanding or impatient tone
+    if any(p in text_lower for p in _PUSHY_PHRASES):
+        return "pushy"
+
+    # Flirty: compliment or attraction signal
     if words & _FLIRTY_WORDS or any(
         p in text_lower for p in ("you're so", "ur so", "you sound amazing", "you look so")
     ):
         return "flirty"
 
-    if "?" in text or any(
-        p in text_lower for p in (
-            "tell me", "show me", "what is", "what do", "what's",
-            "how do", "more about", "want to know",
-        )
-    ):
-        return "curious"
+    # Question: starts with a question word or contains "?"
+    if "?" in text or (word_list and word_list[0] in _QUESTION_STARTERS):
+        return "question"
 
-    # Short engagement words ("lol", "haha", "nice") → dry, not disengaged
-    _engagement_words = {"lol", "haha", "lmao", "omg", "nice", "damn", "wow", "hm", "hmm"}
-    if words & _engagement_words:
-        return "dry"
+    # Low effort: short engagement reactions or very short neutral messages
+    if words & _ENGAGEMENT_WORDS or word_count <= 2:
+        return "low_effort"
 
-    if word_count <= 1:
-        return "disengaged"
-
-    if word_count <= 3:
-        return "dry"
-
-    return "curious"
+    # Everything else with substance → statement
+    return "statement"
 
 
 # ── Final output sanitizer — applied to every outgoing message ────────────────
@@ -1146,6 +1191,16 @@ _GENERAL_BANNED_SUBSTRINGS = (
     "the adventure",
     "what's next in this",
     "what's next on this",
+    # Context-free generic replies — could be sent regardless of user input
+    "the mystery intensifies",
+    "you always ask what",
+    "i figured as much",
+    "interesting choice of words",
+    "full of surprises",
+    "you never disappoint",
+    "as expected",
+    "that's what they all say",
+    "i knew you'd say that",
     # NPC / written dialogue — banned everywhere
     "you're a tough cookie",
     "there's more to you",
@@ -1662,48 +1717,79 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
         ),
     }
 
-    # Per-intent micro-instructions: override the stage escalation bias when the
-    # message energy doesn't warrant it. These sit above the stage hint so the
-    # model calibrates register before reading the stage goal.
+    # Per-intent micro-instructions: these sit above the stage hint so the model
+    # calibrates tone and response type BEFORE applying the stage goal.
     _INTENT_MICRO_HINTS: dict[str, str] = {
-        "disengaged": (
-            "They barely replied. Match their energy exactly. One word or very short phrase is fine.\n"
-            "Do NOT escalate. Do NOT lead. Just hold space.\n"
-            "OK replies: 'yeah' / 'okay' / 'hm' / 'sure' / 'k'\n"
-            "WRONG: anything that tries to pull or tease from a dead response."
+        "question": (
+            "They asked something. Answer it first — briefly and directly.\n"
+            "Do NOT dodge a direct question with a cryptic or unrelated line.\n"
+            "OK: brief answer + optional short follow / OR playful deflection that still acknowledges the question\n"
+            "WRONG: 'the mystery intensifies' / 'you always ask' / any reply that ignores what they asked."
         ),
-        "dry": (
-            "Short message. Reply short. 2–5 words max. Slightly playful or flat — not leading.\n"
-            "OK replies: 'haha maybe' / 'you're funny' / 'relax' / 'we'll see' / 'idk yet' / 'lol sure'\n"
-            "WRONG: 'moving fast, aren't we' / 'easy there' / anything that sounds like a scripted line."
+        "statement": (
+            "They made a statement. React to its specific content.\n"
+            "Your reply must ONLY make sense as a response to THIS statement — not any other.\n"
+            "WRONG: generic observations / anything that could be sent regardless of what they said."
         ),
         "flirty": (
-            "They're being flirty. Receive it simply. Do not over-react, do not gush, do not pitch.\n"
-            "OK replies: 'stop' / 'careful' / 'you're a bit forward' / 'lol okay' / 'haha hi'\n"
-            "WRONG: any scripted seduction line or abstract response."
+            "They're being flirty. Receive it simply. Do not over-react, do not gush.\n"
+            "OK: 'stop' / 'careful' / 'you're a bit forward' / 'lol okay'\n"
+            "WRONG: scripted seduction line / abstract response that ignores the flirt."
+        ),
+        "sexual": (
+            "They went explicitly sexual. Control the pace. Do not match their energy immediately.\n"
+            "Light acknowledgment + pullback. Calm, slightly dry.\n"
+            "OK: 'relax' / 'okay there' / 'lol calm down'\n"
+            "WRONG: escalating immediately / ignoring it entirely / abstract line."
+        ),
+        "pushy": (
+            "They're being demanding or impatient. Slow them down. Stay unbothered.\n"
+            "OK: 'relax' / 'cool it' / 'i do things at my pace'\n"
+            "WRONG: giving them what they want / getting defensive / abstract response."
         ),
         "aggressive": (
-            "They're pushing back or being challenging. Stay calm, slightly dry. Do not fight it.\n"
-            "OK replies: 'okay' / 'sure' / 'lol' / 'noted' / 'fair'\n"
+            "They're hostile or pushing back. Stay calm, slightly dry. Do not fight it.\n"
+            "OK: 'okay' / 'sure' / 'lol' / 'noted' / 'fair'\n"
             "WRONG: defensive, explaining, arguing, or escalating."
         ),
-        "curious": (
-            "They're asking or showing genuine interest. React to the specific question or statement first.\n"
-            "Direct answer first, then one short follow if needed.\n"
-            "WRONG: ignoring the question / changing topic / abstract line unrelated to what they asked."
+        "confused": (
+            "They sent something unclear — bare '?' or a single ambiguous word. Stay simple.\n"
+            "OK: 'what' / 'say that again' / 'huh?' / 'what do you mean'\n"
+            "WRONG: treating it as a deep philosophical question / abstract response."
+        ),
+        "low_effort": (
+            "Short, low-energy message. Reply short. 2–4 words max. Flat or slightly playful.\n"
+            "OK: 'what' / 'that's it?' / 'you're quiet' / 'okay' / 'hm'\n"
+            "WRONG: escalating / abstract line / persona monologue that ignores their energy."
+        ),
+        "disengaged": (
+            "They're checking out or leaving. Match their low energy. Brief, unbothered.\n"
+            "Do NOT escalate, do NOT try to pull them back with a scripted hook.\n"
+            "OK: 'yeah' / 'okay' / 'alright' / 'later'\n"
+            "WRONG: panic / over-reaction / a hook line that ignores they're leaving."
         ),
     }
 
     hint = stage_hints.get(stage, stage_hints["warmup"])
     reply_intent = _classify_reply_intent(user_message)
     intent_override = _INTENT_MICRO_HINTS.get(reply_intent, "")
+    # Intent-specific context validation appended to CONTEXT CHECK
+    _context_check_suffix: dict[str, str] = {
+        "question": "They asked something — if you didn't answer or acknowledge it → rewrite.",
+        "confused":  "They sent something unclear — if you didn't respond to the confusion simply → rewrite.",
+        "statement": "Does your reply ONLY make sense after THIS exact statement? If no → rewrite.",
+        "low_effort": "Did you keep it short (2–4 words)? If not → cut it down.",
+    }
+    context_check = _context_check_suffix.get(
+        reply_intent,
+        "If someone reading it would wonder what it has to do with their message → rewrite it.",
+    )
     user_prompt = (
         f"[INTENT: {reply_intent}]\n"
         + (f"INTENT RULE:\n{intent_override}\n\n" if intent_override else "")
         + f"They just said: {user_message}\n\n"
         f"{hint}\n\n"
-        "CONTEXT CHECK: does your reply directly react to their exact words? "
-        "If someone reading it would wonder what it has to do with their message → rewrite it.\n"
+        f"CONTEXT CHECK: does your reply directly react to their exact words? {context_check}\n"
         "1 to 2 lines. No quotation marks. No paragraphs."
     )
 
