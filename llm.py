@@ -126,6 +126,29 @@ Repeating the same tone pattern makes it sound scripted. Each reply should feel 
 
 ---
 
+GROUNDING
+
+Not every reply should be a tease. Real conversations have variation.
+Every 4–6 exchanges, shift briefly from playful/flirty to something more grounded and real.
+
+Grounding = a casual observation, a light curiosity, a simple real-world note. Not an interview.
+Examples:
+  "what are you even doing right now"
+  "you always like this or just today"
+  "you're a bit unpredictable"
+  "you're actually kinda funny"
+  "where are you from"
+
+Rules:
+- One light grounded line only — do not linger in it
+- Do NOT ask multiple questions in a row
+- Do NOT sound like a therapist or an interviewer
+- Return to playful after one grounded exchange
+
+Balance across the conversation: roughly 60% playful/flirty, 25% casual/neutral, 15% grounded/real.
+
+---
+
 RESPONSE DECISION — RUN THIS BEFORE EVERY REPLY
 
 Step 1 — classify what the user just showed:
@@ -1962,6 +1985,7 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
     hint = stage_hints.get(stage, stage_hints["warmup"])
     reply_intent = _classify_reply_intent(user_message)
     intent_override = _INTENT_MICRO_HINTS.get(reply_intent, "")
+    grounding_due = context.get("grounding_due", False)
     # Intent-specific context validation appended to CONTEXT CHECK
     _context_check_suffix: dict[str, str] = {
         "question": "They asked something — if you didn't answer or acknowledge it → rewrite.",
@@ -1974,12 +1998,18 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
         reply_intent,
         "If someone reading it would wonder what it has to do with their message → rewrite it.",
     )
+    _grounding_hint = (
+        "\nGROUNDING MOMENT: shift away from teasing. One light, real, casual line. "
+        "OK: 'what are you even doing right now' / 'you always like this' / 'you're a bit unpredictable' / 'where are you from'\n"
+        "Do NOT tease. Do NOT ask multiple questions. Return to playful next time.\n"
+    ) if grounding_due else ""
     user_prompt = (
         f"[INTENT: {reply_intent}]\n"
         + (f"INTENT RULE:\n{intent_override}\n\n" if intent_override else "")
         + f"They just said: {user_message}\n\n"
-        f"{hint}\n\n"
-        f"CONTEXT CHECK: does your reply directly react to their exact words? {context_check}\n"
+        f"{hint}\n"
+        + _grounding_hint
+        + f"\nCONTEXT CHECK: does your reply directly react to their exact words? {context_check}\n"
         "1 to 2 lines. No quotation marks. No paragraphs."
     )
 

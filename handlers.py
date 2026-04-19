@@ -1134,7 +1134,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _type_and_send(context.bot, chat_id, reply)
             return
 
+        # Grounding rhythm — every 4–6 normal exchanges, shift from tease to a real moment
+        _ground_turns = context.user_data.get("turns_since_grounding", 0) + 1
+        _ground_threshold = context.user_data.get("grounding_threshold", random.randint(4, 6))
+        _grounding_due = _ground_turns >= _ground_threshold
+        if _grounding_due:
+            context.user_data["turns_since_grounding"] = 0
+            context.user_data["grounding_threshold"] = random.randint(4, 6)
+        else:
+            context.user_data["turns_since_grounding"] = _ground_turns
+
         if intent == "dry" and "?" not in text:
+            # Dry: keep flat — grounding doesn't apply to low-energy exchanges
             reply = await chat_reply(text, context={"stage": "dry"}, history=history)
             _track_response(context.user_data, "dry", reply)
             _push_history(context.user_data, text, reply)
@@ -1144,12 +1155,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             or intent_level in ("mid", "high")
             or "?" in text
         ):
-            reply = await chat_reply(text, context={"stage": stage}, history=history)
+            reply = await chat_reply(
+                text,
+                context={"stage": stage, "grounding_due": _grounding_due},
+                history=history,
+            )
             _track_response(context.user_data, stage, reply)
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
         else:
-            reply = await chat_reply(text, context={"stage": stage}, history=history)
+            reply = await chat_reply(
+                text,
+                context={"stage": stage, "grounding_due": _grounding_due},
+                history=history,
+            )
             _track_response(context.user_data, stage, reply)
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
