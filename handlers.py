@@ -60,6 +60,20 @@ _HESITANT_PHRASES = [
     "just browsing", "only browsing",
 ]
 
+# Phrases that signal explicit, firm rejection — distinct from hesitation
+_STRONG_RESISTANCE_PHRASES = [
+    "not interested",
+    "not my type",
+    "not for me",
+    "i don't pay",
+    "i dont pay",
+    "don't pay for",
+    "dont pay for",
+    "never paying",
+    "not paying",
+    "hard pass",
+]
+
 # Minimum warmup turns before triggering curiosity
 _WARMUP_MIN_TURNS = 3
 
@@ -344,6 +358,15 @@ def _is_hesitant(text: str) -> bool:
     if words & _HESITANT_WORDS:
         return True
     return any(p in text_lower for p in _HESITANT_PHRASES)
+
+
+def _is_strong_resistance(text: str) -> bool:
+    """Explicit, firm rejection of the offer — 'not interested', 'I don't pay', etc.
+    Distinct from hesitation (_is_hesitant) and generic negatives (_is_negative).
+    Routes to clean exit, not retention.
+    """
+    text_lower = text.lower()
+    return any(p in text_lower for p in _STRONG_RESISTANCE_PHRASES)
 
 
 _EXIT_WORDS = {"bye", "goodbye", "cya"}
@@ -1211,8 +1234,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         offer_turns = context.user_data.get("offer_turn_count", 0)
 
         if _is_buying_signal(text):
-            # Explicit purchase intent — re-show packs immediately
+            # Explicit purchase intent — re-show packs immediately, clear any resistance flag
             context.user_data["offer_turn_count"] = 0
+            context.user_data.pop("strong_resistance", None)
             await _show_packs(update, context)
             return
 
@@ -1228,16 +1252,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _type_and_send(context.bot, chat_id, reply)
             return
 
-        if _is_negative(text):
-            # Soft rejection — acknowledge, keep talking, don't repeat the offer
+        if _is_strong_resistance(text):
+            # PATH B — explicit rejection: acknowledge once, no chase, no re-offer
             context.user_data["offer_turn_count"] = 0
+            context.user_data["strong_resistance"] = True
             await db.set_user_state(user_id, State.BUILD)
-            reply = await chat_reply(text, context={"stage": "post_offer_objection"}, history=history)
+            reply = await chat_reply(text, context={"stage": "clean_exit"}, history=history)
             _push_history(context.user_data, text, reply)
             await _type_and_send(context.bot, chat_id, reply)
             return
 
-        if offer_turns >= _OFFER_COOLDOWN_TURNS and _is_asking_about_content(text):
+        if _is_negative(text):
+            # PATH A — light rejection: warm acknowledgment, stay in conversation
+            context.user_data["offer_turn_count"] = 0
+            await db.set_user_state(user_id, State.BUILD)
+            reply = await chat_reply(text, context={"stage": "soft_retain"}, history=history)
+            _push_history(context.user_data, text, reply)
+            await _type_and_send(context.bot, chat_id, reply)
+            return
+
+        if offer_turns >= _OFFER_COOLDOWN_TURNS and _is_asking_about_content(text) and not context.user_data.get("strong_resistance"):
             # User is asking directly about the content after a gap — natural re-offer moment
             context.user_data["offer_turn_count"] = 0
             await _show_packs(update, context)
@@ -1250,9 +1284,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply = await chat_reply(text, context={"stage": "post_offer_objection"}, history=history)
             _track_response(context.user_data, "post_offer_objection", reply)
             _push_history(context.user_data, text, reply)
-        elif "?" in text:
-            reply = await chat_reply(text, context={"stage": stage}, history=history)
-            _track_response(context.user_data, stage, reply)
+        elif _is_asking_about_content(text) or "?" in text:
+            # Direct question — answer it, do not tease or redirect to vault
+            reply = await chat_reply(text, context={"stage": "answer_intent"}, history=history)
+            _track_response(context.user_data, "answer_intent", reply)
             _push_history(context.user_data, text, reply)
         elif intent == "dry" and "?" not in text:
             reply = await chat_reply(text, context={"stage": "dry"}, history=history)
@@ -1269,7 +1304,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == State.PAYMENT_PENDING:
         await _type_and_send(
             context.bot, chat_id,
-            "just use the link above to pay and then hit that button — i'll send everything over right away",
+            "just pay through the link above — i'll send everything over right away",
             delay=1.0,
         )
         return

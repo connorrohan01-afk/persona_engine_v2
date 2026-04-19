@@ -1105,6 +1105,14 @@ _PHRASE_REPLACEMENTS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\bis\s+that\s+so\b", re.I), ""),
     (re.compile(r"\boh\s+really\s+now\b", re.I), ""),
     (re.compile(r"\bcareful\s+now\b", re.I), "careful"),
+    # ── System / UI transactional language → natural alternatives ────────────
+    (re.compile(r"tap\s+the\s+button", re.I), "it's there if you want it"),
+    (re.compile(r"tap\s+below", re.I), "it's there if you want it"),
+    (re.compile(r"hit\s+the\s+button", re.I), "it's there if you want it"),
+    (re.compile(r"check\s+it\s+out\s+when\s+(you'?re\s+)?ready", re.I), "only if you're curious though"),
+    (re.compile(r"purchase\s+here", re.I), "it's there if you want it"),
+    (re.compile(r"click\s+the\s+link", re.I), "it's there if you want it"),
+    (re.compile(r"\buse\s+the\s+link\b", re.I), "it's there"),
 ]
 
 _MAX_REPLY_CHARS = 160   # messages longer than this get trimmed to 2 sentences
@@ -1212,6 +1220,16 @@ _GENERAL_BANNED_SUBSTRINGS = (
     "you're quite something",
     "i like how you think",
     "you always know what to say",
+    # System / transactional UI language — no real person texts like this
+    "tap the button",
+    "tap below",
+    "hit the button",
+    "check it out when",
+    "purchase here",
+    "click the link",
+    "use the link",
+    "link is above",
+    "link is below",
 )
 
 _VAULT_STAGES = {"partial_reveal", "earned_access"}
@@ -1437,7 +1455,7 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "interesting timing to pull back\nyou were right at the part that changes it",
             "okay. you'll think about it though\nthat's not me being hopeful. it's just what happens",
             "that's not no. that's not yet\nthere's a difference and you know it",
-            "fair. i'm not going to push it\nyou haven't actually seen what you're passing on though",
+            "fair. i'm not going to push it",
             "okay. it's not for everyone\nyou'll get curious later. you always do",
             "most people who leave right here come back more curious\nnot less",
             "you walked out right before the thing that changes it\ni'm not going to explain what it was",
@@ -1457,6 +1475,23 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "haha okay",
             "fair",
             "you might later",
+        ],
+        "soft_retain": [
+            "fair… you're a tough one",
+            "kinda like that about you honestly",
+            "alright. not pushing",
+            "okay fair. i'll leave it",
+            "lol okay. you're stubborn",
+            "that's fine. we can just talk",
+            "okay i hear you",
+        ],
+        "clean_exit": [
+            "all good. not for everyone",
+            "no pressure",
+            "you'll probably come back to it",
+            "fair enough. i'll behave",
+            "okay. you know where to find me",
+            "totally fine",
         ],
         "curiosity":    ["something about the way this is going",
                          "there's more under that than you're showing",
@@ -1767,6 +1802,24 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "Do NOT escalate, do NOT try to pull them back with a scripted hook.\n"
             "OK: 'yeah' / 'okay' / 'alright' / 'later'\n"
             "WRONG: panic / over-reaction / a hook line that ignores they're leaving."
+        ),
+        "answer_intent": (
+            "They asked a direct question about content or what they get. Answer it briefly and honestly.\n"
+            "Do NOT tease or withhold. Do NOT redirect to buying. Just answer what they asked.\n"
+            "OK: 'yeah it's photos' / 'more personal stuff' / 'depends which pack'\n"
+            "WRONG: 'you'll see' / 'that's the surprise' / anything that avoids the question."
+        ),
+        "soft_retain": (
+            "They lightly pushed back or said they're not sure. Do NOT repeat the offer. Do NOT argue or defend.\n"
+            "Acknowledge warmly in one line and drop the topic. Return to normal conversation.\n"
+            "OK: 'fair… you're a tough one' / 'kinda like that about you' / 'alright, not pushing' / 'okay i hear you'\n"
+            "WRONG: repeating the offer / explaining value / asking why / any vault reference."
+        ),
+        "clean_exit": (
+            "They explicitly said no — 'not interested', 'I don't pay', 'not my type'. Accept it completely.\n"
+            "End with calm detachment or very light intrigue. One line. No push. No follow-up offer.\n"
+            "OK: 'all good. not for everyone' / 'no pressure' / 'you'll probably come back to it' / 'i'll behave… for now'\n"
+            "WRONG: repeating the offer / explaining value / chasing / mentioning the vault again."
         ),
     }
 
