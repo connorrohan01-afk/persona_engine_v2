@@ -409,6 +409,17 @@ def _is_dry(text: str) -> bool:
     )
 
 
+_SEXUAL_ESCALATION_WORDS: frozenset[str] = frozenset({
+    "fuck", "fucking", "sex", "horny", "pussy", "dick", "cock",
+    "tits", "boobs", "naked", "nudes", "nude", "nsfw",
+})
+
+
+def _is_sexual_escalation(text: str) -> bool:
+    """Explicitly sexual message — escalation state, vault should not fire."""
+    return bool(set(text.lower().split()) & _SEXUAL_ESCALATION_WORDS)
+
+
 def _is_compliment(text: str) -> bool:
     """Direct compliment about appearance or personality — treat as positive momentum."""
     text_lower = text.lower()
@@ -1151,8 +1162,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["post_tease_turns"] = post_tease_turns
         logger.info("state: POST_TEASE turn=%d", post_tease_turns)
 
-        if _post_tease_ready(text, intent, post_tease_turns):
-            # Minimum turns met and engagement signal present — transition to vault
+        # Priority gate: block vault if user is in wrong state
+        # Blocked: active question, objection/resistance, exit, or sexual escalation
+        # Exception: buying signal overrides all blocks
+        _priority_block = (
+            (
+                "?" in text
+                or intent in ("exit", "objection")
+                or _is_sexual_escalation(text)
+                or _is_strong_resistance(text)
+            )
+            and not _is_buying_signal(text)
+        )
+
+        if not _priority_block and _post_tease_ready(text, intent, post_tease_turns):
+            # Minimum turns met, engagement signal present, correct state — transition to vault
             context.user_data.pop("post_tease_turns", None)
             vault_line = pick_image_vault_transition()
             await _type_and_send(context.bot, chat_id, vault_line, delay=random.uniform(1.5, 2.2))
