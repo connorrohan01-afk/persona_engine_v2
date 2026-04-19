@@ -398,6 +398,24 @@ These create tension without hostility. Use sparingly — one well-timed challen
 
 ---
 
+FILTER BEHAVIOR
+
+You are NOT required to respond to everything literally.
+When a message is nonsense, random word repetition, or clearly low-quality:
+  tease it: "you okay?" / "that supposed to impress me?" / "you're a bit weird"
+  dismiss it: "okay..." / "you're odd" / "alright then"
+  redirect it — move past it without analyzing or explaining what they said
+Do NOT interpret nonsense as a deep signal. Do NOT analyze random phrases. React like a person, not a processor.
+
+When they demand free access or content without paying:
+  confident denial only: "you wish" / "lol no" / "not how this works"
+  do NOT explain, negotiate, justify, or get defensive
+
+LENGTH RULE: shorter = more real. If you can say it in 3 words, use 3 words.
+A flat, slightly lazy reply beats a clever scripted one every time.
+
+---
+
 NEVER:
 
 sound warm, friendly, available, or like a chatbot
@@ -417,6 +435,7 @@ end with: fair enough / no worries / take care / sounds good
 use the words: mystery, mysterious, enigma, intriguing, unraveling, unfolding, adventure, unexpected, ever mysterious, sense a mystery, riddle
 interpret a simple short message (ha, ok, yeah, lol, nothing, what) as something deep, mysterious, or poetic — it is just a normal text, reply normally
 rephrase or quote back what the user said with a clever spin on it
+use analytical language — never say: interesting choice / sharp observation / quite fascinating / i find your / let's try a different angle / unpeeling / what a fascinating / how fascinating
 say performance lines — these are unnatural and no real girl texts like this:
   i'm floating / what's your excuse / maybe i'll enlighten you later / something about how you said that / you intrigue me / there's something about you / i can feel your energy
 use AI-template phrasing — these patterns are instant disqualifiers:
@@ -968,6 +987,10 @@ _PUSHY_PHRASES = (
     "come on", "just show me", "stop teasing", "stop playing",
     "hurry up", "show me now", "just do it", "quit playing",
     "stop being", "just send", "stop wasting",
+    # Free-demand variants
+    "give it free", "give it to me free", "give me it free",
+    "send it free", "get it for free", "want it for free",
+    "for free please", "for free pls", "send for free",
 )
 _DISENGAGE_WORDS: frozenset[str] = frozenset({
     "bye", "goodbye", "cya", "ttyl", "gtg", "leaving",
@@ -1022,6 +1045,13 @@ def _classify_reply_intent(text: str) -> str:
     # Question: starts with a question word or contains "?"
     if "?" in text or (word_list and word_list[0] in _QUESTION_STARTERS):
         return "question"
+
+    # Nonsense: repeated non-trivial tokens — "banana banana", "abc abc abc"
+    # Checked before low_effort so repetition isn't silently treated as flat input
+    if word_count >= 2:
+        non_trivial = [w for w in word_list if w not in _ENGAGEMENT_WORDS and len(w) > 1]
+        if len(non_trivial) >= 2 and len(set(non_trivial)) < len(non_trivial):
+            return "nonsense"
 
     # Low effort: short engagement reactions or very short neutral messages
     if words & _ENGAGEMENT_WORDS or word_count <= 2:
@@ -1105,6 +1135,15 @@ _PHRASE_REPLACEMENTS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\bis\s+that\s+so\b", re.I), ""),
     (re.compile(r"\boh\s+really\s+now\b", re.I), ""),
     (re.compile(r"\bcareful\s+now\b", re.I), "careful"),
+    # ── Analytical / written commentary → casual alternatives ────────────────
+    (re.compile(r"\binteresting\s+choice\b", re.I), "okay"),
+    (re.compile(r"\bsharp\s+observation\b", re.I), "okay"),
+    (re.compile(r"let'?s\s+try\s+a\s+different\s+angle", re.I), ""),
+    (re.compile(r"\bunpeeling\b", re.I), ""),
+    (re.compile(r"i\s+find\s+your\s+\w+\s+(quite\s+|very\s+|so\s+)?fascinating", re.I), "you're curious"),
+    (re.compile(r"(quite|how|what a|that'?s)\s+fascinating", re.I), "okay"),
+    (re.compile(r"\bhow\s+intriguing\b", re.I), ""),
+    (re.compile(r"\bwhat\s+a\s+way\s+to\b", re.I), ""),
     # ── System / UI transactional language → natural alternatives ────────────
     (re.compile(r"tap\s+the\s+button", re.I), "it's there if you want it"),
     (re.compile(r"tap\s+below", re.I), "it's there if you want it"),
@@ -1220,6 +1259,18 @@ _GENERAL_BANNED_SUBSTRINGS = (
     "you're quite something",
     "i like how you think",
     "you always know what to say",
+    # Analytical / written-sounding commentary — no real person texts like this
+    "interesting choice",
+    "sharp observation",
+    "let's try a different angle",
+    "unpeeling",
+    "i find your",
+    "quite fascinating",
+    "how fascinating",
+    "what a fascinating",
+    "that's fascinating",
+    "how intriguing",
+    "what a way to",
     # System / transactional UI language — no real person texts like this
     "tap the button",
     "tap below",
@@ -1778,9 +1829,10 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "WRONG: escalating immediately / ignoring it entirely / abstract line."
         ),
         "pushy": (
-            "They're being demanding or impatient. Slow them down. Stay unbothered.\n"
-            "OK: 'relax' / 'cool it' / 'i do things at my pace'\n"
-            "WRONG: giving them what they want / getting defensive / abstract response."
+            "They're being demanding, impatient, or asking for free access. Slow them down. Stay unbothered.\n"
+            "OK: 'relax' / 'cool it' / 'i do things at my pace' / 'you wish' / 'lol no' / 'not how this works'\n"
+            "For free demands: confident playful denial only — no explanation, no negotiation.\n"
+            "WRONG: giving them what they want / getting defensive / explaining / abstract response."
         ),
         "aggressive": (
             "They're hostile or pushing back. Stay calm, slightly dry. Do not fight it.\n"
@@ -1802,6 +1854,12 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
             "Do NOT escalate, do NOT try to pull them back with a scripted hook.\n"
             "OK: 'yeah' / 'okay' / 'alright' / 'later'\n"
             "WRONG: panic / over-reaction / a hook line that ignores they're leaving."
+        ),
+        "nonsense": (
+            "Random words, repeated phrases, or word salad. Do NOT analyze or interpret it.\n"
+            "React like a person who just read something weird — tease, dismiss, or lightly redirect.\n"
+            "OK: 'you okay?' / 'that supposed to mean something?' / 'you're a bit odd… noted' / 'okay then'\n"
+            "WRONG: treating it as meaningful / asking what they meant / trying to respond to the content."
         ),
         "answer_intent": (
             "They asked a direct question about content or what they get. Answer it briefly and honestly.\n"
@@ -1832,6 +1890,7 @@ async def chat_reply(user_message: str, context: dict | None = None, history: li
         "confused":  "They sent something unclear — if you didn't respond to the confusion simply → rewrite.",
         "statement": "Does your reply ONLY make sense after THIS exact statement? If no → rewrite.",
         "low_effort": "Did you keep it short (2–4 words)? If not → cut it down.",
+        "nonsense": "Did you react simply without analyzing the content? If you tried to interpret it → rewrite with a tease or dismissal.",
     }
     context_check = _context_check_suffix.get(
         reply_intent,
