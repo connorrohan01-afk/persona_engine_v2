@@ -13,12 +13,9 @@ from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
 import db
-from config import PACKS
-from delivery import deliver_pack, send_sample_images
+
 from keyboards import (
-    pack_detail_keyboard,
     packs_keyboard,
-    payment_done_keyboard,
     upsell_keyboard,
 )
 from llm import (
@@ -812,11 +809,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "view_packs":
         await _show_packs(update, context)
     elif data.startswith("pack_"):
-        pack_id = data[len("pack_"):]
-        await _show_pack_preview(update, context, pack_id)
-    elif data.startswith("paid_"):
-        pack_id = data[len("paid_"):]
-        await _handle_paid_claim(update, context, pack_id)
+        # Legacy callback from old keyboards — re-show packs with current direct-URL buttons
+        await _show_packs(update, context)
     elif data == "exit":
         await _handle_exit(update, context)
     else:
@@ -838,107 +832,6 @@ async def _show_packs(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     intro = await persona_message("offer_intro")
     await _type_and_send(context.bot, chat_id, intro, reply_markup=packs_keyboard())
-
-
-# ── Pack preview (PREVIEW state) ──────────────────────────────────────────────
-
-async def _show_pack_preview(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, pack_id: str
-):
-    if pack_id not in PACKS:
-        await update.effective_message.reply_text("hmm, can't find that one")
-        return
-
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    pack = PACKS[pack_id]
-
-    await db.set_user_state(user_id, State.PREVIEW)
-
-    # 1. Send preview images (best-effort, no crash if missing)
-    await send_sample_images(context.bot, chat_id, pack_id)
-
-    # 2. Teasing message
-    preview_text = await persona_message("preview")
-    await _type_and_send(context.bot, chat_id, preview_text, delay=1.0)
-
-    # 3. Pack detail + buy button
-    payment_line = await persona_message("payment")
-    detail = (
-        f"{pack['emoji']} {pack['name']} — ${pack['price_usd']}\n\n"
-        f"{pack['description']}\n\n"
-        f"{payment_line}"
-    )
-    await _type_and_send(
-        context.bot, chat_id, detail,
-        delay=1.2,
-        reply_markup=pack_detail_keyboard(pack_id),
-    )
-
-    # 4. Transition to PAYMENT_PENDING and record pending purchase
-    await db.set_user_state(user_id, State.PAYMENT_PENDING)
-    if not await db.get_undelivered_purchase(user_id, pack_id):
-        await db.create_purchase(
-            user_id=user_id,
-            pack_id=pack_id,
-            stripe_session=None,
-            amount_cents=pack["amount_cents"],
-        )
-
-    # 5. "I've paid" fallback button
-    await _type_and_send(
-        context.bot, chat_id,
-        "tap the button when you're ready",
-        delay=0.8,
-        reply_markup=payment_done_keyboard(pack_id),
-    )
-
-
-# ── Manual "I've paid" claim ──────────────────────────────────────────────────
-
-async def _handle_paid_claim(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, pack_id: str
-):
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-
-    if await db.has_been_delivered(user_id, pack_id):
-        await _type_and_send(
-            context.bot, chat_id,
-            "you already have this one! scroll up 👆"
-        )
-        return
-
-    purchase = await db.get_undelivered_purchase(user_id, pack_id)
-    if not purchase:
-        await _type_and_send(
-            context.bot, chat_id,
-            "i haven't seen your payment come through yet — try again in a sec or use the link above"
-        )
-        return
-
-    await db.set_user_state(user_id, State.DELIVERY)
-    success = await deliver_pack(context.bot, user_id, pack_id, purchase["id"])
-
-    if success:
-        await db.set_user_state(user_id, State.UPSELL)
-        context.user_data["conversation_stage"] = "post_purchase"
-        context.user_data["stage_turn_count"] = 0
-        delivery_msg = await persona_message("delivery")
-        await _type_and_send(context.bot, chat_id, delivery_msg, delay=1.0)
-        # Light upsell — wait a beat so it doesn't feel instant
-        await asyncio.sleep(2.5)
-        upsell_msg = await chat_reply("", context={"stage": "upsell"})
-        await _type_and_send(
-            context.bot, chat_id, upsell_msg,
-            delay=1.5,
-            reply_markup=upsell_keyboard(),
-        )
-    else:
-        await _type_and_send(
-            context.bot, chat_id,
-            "something went wrong on my end — drop me a message and i'll sort it"
-        )
 
 
 # ── Exit ──────────────────────────────────────────────────────────────────────
@@ -1343,13 +1236,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _type_and_send(context.bot, chat_id, reply)
         return
 
-    # ── PAYMENT_PENDING: reassure, don't spam ─────────────────────────────────
+    # ── PAYMENT_PENDING: legacy state — re-show packs with direct URL buttons ──
     if state == State.PAYMENT_PENDING:
-        await _type_and_send(
-            context.bot, chat_id,
-            "just pay through the link above — i'll send everything over right away",
-            delay=1.0,
-        )
+        await _show_packs(update, context)
         return
 
     # ── UPSELL: light touch — no repeated keyboard ────────────────────────────

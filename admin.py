@@ -10,7 +10,7 @@ from telegram.ext import ContextTypes
 
 import db
 from config import ADMIN_USER_ID
-from delivery import deliver_pack
+from delivery import deliver_pack, pack_id_for_tier
 from states import State
 
 logger = logging.getLogger(__name__)
@@ -96,6 +96,68 @@ async def cmd_force_deliver(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     logger.info("ADMIN_FORCE_DELIVER admin=%s target=%s pack=%s success=%s",
                 update.effective_user.id, target_user_id, pack_id, success)
+
+
+@admin_only
+async def cmd_deliver(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Manually deliver a pack to a user — for testing and support.
+    Usage: /deliver starter|premium|vip USER_ID
+    Example: /deliver premium 123456789
+    """
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Usage: /deliver starter|premium|vip USER_ID\n"
+            "Aliases: basic = starter"
+        )
+        return
+
+    tier = args[0].lower()
+    pack_id = pack_id_for_tier(tier)
+    if not pack_id:
+        await update.message.reply_text(
+            f"Unknown tier '{tier}'. Use: starter, premium, or vip."
+        )
+        return
+
+    try:
+        target_user_id = int(args[1])
+    except ValueError:
+        await update.message.reply_text("Invalid USER_ID — must be an integer.")
+        return
+
+    user = await db.get_user(target_user_id)
+    if not user:
+        await update.message.reply_text(f"User {target_user_id} not found in DB.")
+        return
+
+    if await db.has_been_delivered(target_user_id, pack_id):
+        await update.message.reply_text(
+            f"⚠️ {tier} pack already delivered to user {target_user_id}."
+        )
+        return
+
+    purchase_id = await db.create_purchase(
+        user_id=target_user_id,
+        pack_id=pack_id,
+        stripe_session="admin_deliver",
+        amount_cents=0,
+    )
+    await db.set_user_state(target_user_id, State.DELIVERY)
+    success = await deliver_pack(context.bot, target_user_id, pack_id, purchase_id)
+
+    if success:
+        await db.set_user_state(target_user_id, State.UPSELL)
+        await update.message.reply_text(
+            f"✅ {tier} pack delivered to user {target_user_id}."
+        )
+    else:
+        await update.message.reply_text(
+            f"❌ Delivery failed for user {target_user_id} / {tier}. Check logs."
+        )
+    logger.info("ADMIN_DELIVER admin=%s target=%s tier=%s pack=%s success=%s",
+                update.effective_user.id, target_user_id, tier, pack_id, success)
 
 
 @admin_only

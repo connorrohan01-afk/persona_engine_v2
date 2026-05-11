@@ -18,7 +18,7 @@ from telegram.ext import (
 
 import db
 import payments
-from admin import cmd_ban, cmd_force_deliver, cmd_stats
+from admin import cmd_ban, cmd_deliver, cmd_force_deliver, cmd_stats
 from config import BOT_TOKEN
 from handlers import cmd_start, handle_callback, handle_message
 
@@ -46,6 +46,7 @@ async def main():
     # Register handlers
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("stats", cmd_stats))
+    application.add_handler(CommandHandler("deliver", cmd_deliver))
     application.add_handler(CommandHandler("force_deliver", cmd_force_deliver))
     application.add_handler(CommandHandler("ban", cmd_ban))
     application.add_handler(CallbackQueryHandler(handle_callback))

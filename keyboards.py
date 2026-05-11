@@ -1,6 +1,5 @@
 """
 Inline keyboard factories.
-All pack metadata lives here so it's one place to update prices / links.
 """
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -14,23 +13,16 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
 
 
 def packs_keyboard() -> InlineKeyboardMarkup:
+    """Pack list — each button opens the Replit vault page directly (URL button, no callback)."""
     rows = []
-    for pack_id, pack in PACKS.items():
+    for pack in PACKS.values():
         rows.append([
             InlineKeyboardButton(
                 f"{pack['emoji']} {pack['name']} (${pack['price_usd']})",
-                callback_data=f"pack_{pack_id}",
+                url=pack["payment_link"],
             )
         ])
     return InlineKeyboardMarkup(rows)
-
-
-def pack_detail_keyboard(pack_id: str) -> InlineKeyboardMarkup:
-    pack = PACKS[pack_id]
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔓 Get Access", url=pack["payment_link"])],
-        [InlineKeyboardButton("⬅️ Back to Packs", callback_data="view_packs")],
-    ])
 
 
 def upsell_keyboard() -> InlineKeyboardMarkup:
@@ -38,10 +30,3 @@ def upsell_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("⬆️ Upgrade — see more", callback_data="view_packs")],
         [InlineKeyboardButton("❌ No thanks", callback_data="exit")],
     ])
-
-
-def payment_done_keyboard(pack_id: str) -> InlineKeyboardMarkup:
-    """Button the user presses after completing payment."""
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton("✅ I've paid — send my pack!", callback_data=f"paid_{pack_id}"),
-    ]])
