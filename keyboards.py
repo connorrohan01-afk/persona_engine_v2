@@ -28,7 +28,7 @@ def packs_keyboard() -> InlineKeyboardMarkup:
 def pack_detail_keyboard(pack_id: str) -> InlineKeyboardMarkup:
     pack = PACKS[pack_id]
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💳 Buy Now", url=pack["payment_link"])],
+        [InlineKeyboardButton("🔓 Get Access", url=pack["payment_link"])],
         [InlineKeyboardButton("⬅️ Back to Packs", callback_data="view_packs")],
     ])
 

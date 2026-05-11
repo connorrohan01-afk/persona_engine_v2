@@ -12,6 +12,11 @@ ADMIN_USER_ID: int = int(os.environ["ADMIN_USER_ID"])
 # ── Stripe ────────────────────────────────────────────────────────────────────
 STRIPE_WEBHOOK_SECRET: str = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 
+# ── Vault / Replit page URLs ───────────────────────────────────────────────────
+VAULT_URL_BASIC:   str = "https://ariaaccess.replit.app/basic.html"
+VAULT_URL_PREMIUM: str = "https://ariaaccess.replit.app/premium.html"
+VAULT_URL_VIP:     str = "https://ariaaccess.replit.app/vip.html"
+
 # ── Persona ───────────────────────────────────────────────────────────────────
 PERSONA_NAME: str = os.environ.get("PERSONA_NAME", "Luna")
 PERSONA_TAGLINE: str = os.environ.get(
@@ -33,7 +38,7 @@ PACKS: dict = {
             "10 exclusive AI-generated art pieces in a private gallery. "
             "Perfect introduction to Luna's world."
         ),
-        "payment_link": os.environ.get("STRIPE_LINK_PACK_A", "https://buy.stripe.com/placeholder_a"),
+        "payment_link": VAULT_URL_BASIC,   # routes to Replit vault page, not Stripe directly
         "amount_cents": 900,
         "sample_images": os.environ.get("SAMPLE_IMAGES_PACK_A", "").split(","),
         "delivery_link": os.environ.get("DELIVERY_LINK_PACK_A", ""),
@@ -46,7 +51,7 @@ PACKS: dict = {
             "25 high-resolution AI artworks + behind-the-scenes prompts. "
             "Luna's most popular collection."
         ),
-        "payment_link": os.environ.get("STRIPE_LINK_PACK_B", "https://buy.stripe.com/placeholder_b"),
+        "payment_link": VAULT_URL_PREMIUM,  # routes to Replit vault page, not Stripe directly
         "amount_cents": 1900,
         "sample_images": os.environ.get("SAMPLE_IMAGES_PACK_B", "").split(","),
         "delivery_link": os.environ.get("DELIVERY_LINK_PACK_B", ""),
@@ -59,7 +64,7 @@ PACKS: dict = {
             "50 artworks + exclusive Telegram channel access + monthly new drops. "
             "The full Luna experience."
         ),
-        "payment_link": os.environ.get("STRIPE_LINK_PACK_C", "https://buy.stripe.com/placeholder_c"),
+        "payment_link": VAULT_URL_VIP,      # routes to Replit vault page, not Stripe directly
         "amount_cents": 3900,
         "sample_images": os.environ.get("SAMPLE_IMAGES_PACK_C", "").split(","),
         "delivery_link": os.environ.get("DELIVERY_LINK_PACK_C", ""),
