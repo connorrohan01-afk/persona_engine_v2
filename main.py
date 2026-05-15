@@ -1,6 +1,6 @@
 """
-Entry point — starts the Telegram bot and the Stripe webhook FastAPI server
-on the same process using uvicorn + asyncio.
+Entry point — starts the Telegram bot, a FastAPI server (port 8080, payments.py),
+and a Flask webhook server (port 5001, webhook_handler.py) on the same process.
 """
 
 import asyncio
@@ -18,9 +18,11 @@ from telegram.ext import (
 
 import db
 import payments
-from admin import cmd_ban, cmd_deliver, cmd_force_deliver, cmd_stats
+import admin_commands
+from admin import cmd_ban, cmd_force_deliver, cmd_stats
 from config import BOT_TOKEN
 from handlers import cmd_start, handle_callback, handle_message
+from webhook_handler import start_webhook_server
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -46,11 +48,14 @@ async def main():
     # Register handlers
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("stats", cmd_stats))
-    application.add_handler(CommandHandler("deliver", cmd_deliver))
+    admin_commands.register(application)  # /deliver basic|premium|vip USER_ID
     application.add_handler(CommandHandler("force_deliver", cmd_force_deliver))
     application.add_handler(CommandHandler("ban", cmd_ban))
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # Start Flask payment webhook server (port 5001) in background thread
+    start_webhook_server(port=5001)
 
     # Inject application reference into payments module for webhook-triggered delivery
     payments.set_application(application)
