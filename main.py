@@ -5,8 +5,10 @@ from payments.py via uvicorn on the single public port.
 """
 
 import asyncio
+import fcntl
 import logging
 import os
+import sys
 
 import uvicorn
 from telegram.ext import (
@@ -35,9 +37,34 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 WEBHOOK_PORT = int(os.environ.get("PORT", 8080))
+_LOCK_FILE = "/tmp/luna-bot.lock"
+
+
+def _acquire_instance_lock() -> object:
+    """Open an exclusive file lock so only one bot process can run at a time.
+    A second process that calls this will log an error and exit immediately,
+    which prevents telegram.error.Conflict from two pollers hitting the same token.
+    The lock is automatically released when the process exits (OS closes the fd).
+    """
+    try:
+        fp = open(_LOCK_FILE, "w")
+        fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fp.write(str(os.getpid()))
+        fp.flush()
+        logger.info("Instance lock acquired (pid=%d)", os.getpid())
+        return fp  # keep reference alive — GC would release the lock
+    except OSError:
+        logger.error(
+            "Another bot instance is already running — exiting to avoid Conflict. "
+            "Stop the other process first, or delete %s if it is stale.",
+            _LOCK_FILE,
+        )
+        sys.exit(1)
 
 
 async def main():
+    _lock = _acquire_instance_lock()  # exits if another instance is running
+
     # DB init
     await db.init_db()
     logger.info("Database initialised")
