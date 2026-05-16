@@ -20,12 +20,14 @@ import os
 import threading
 
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 from delivery import deliver_basic_pack, deliver_premium_pack, deliver_vip_pack
 
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+CORS(app, origins=["https://ariaaccess.replit.app"])
 
 _DELIVER_MAP = {
     "basic":   deliver_basic_pack,
