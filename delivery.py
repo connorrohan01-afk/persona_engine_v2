@@ -21,18 +21,23 @@ from config import PACKS
 
 logger = logging.getLogger(__name__)
 
-# Number of placeholder images per tier
-_PACK_IMAGE_COUNTS: dict[str, int] = {
-    "pack_a": 10,
-    "pack_b": 35,
-    "pack_c": 75,
-}
-
-# Natural follow-up message sent after images
-_PACK_FOLLOW_UP: dict[str, str] = {
-    "pack_a": "that's just the start. let me know what you think",
-    "pack_b": "took a lot to put that together. it's all yours now",
-    "pack_c": "that's everything. every piece of it. hope it was worth the wait",
+# Paced delivery config per tier
+_PACK_DELIVERY: dict[str, dict] = {
+    "pack_a": {
+        "opener":  "here's what i put together for you...",
+        "batches": [3, 3, 4],
+        "closer":  "that's your collection. let me know what you think 🖤",
+    },
+    "pack_b": {
+        "opener":  "here's your collection. took a while to put this together...",
+        "batches": [10, 12, 13],
+        "closer":  "that's everything in your pack. more dropping soon 🖤",
+    },
+    "pack_c": {
+        "opener":  "everything. this is the full vault...",
+        "batches": [20, 25, 30],
+        "closer":  "that's the full vault. you've got everything 🖤",
+    },
 }
 
 # Friendly tier name → pack_id
@@ -45,26 +50,47 @@ _TIER_MAP: dict[str, str] = {
 
 
 async def _send_pack_images(bot: Bot, user_id: int, pack_id: str) -> None:
-    """Send placeholder images + one follow-up message for a pack.
-    Uses picsum.photos with sequential ?random= params.
-    0.3s delay between sends to stay within Telegram flood limits.
-    """
-    count = _PACK_IMAGE_COUNTS.get(pack_id, 10)
-    for i in range(1, count + 1):
-        try:
-            await bot.send_photo(
-                chat_id=user_id,
-                photo=f"https://picsum.photos/800/600?random={i}",
-            )
-        except TelegramError as exc:
-            logger.warning("Could not send image %d to user=%s: %s", i, user_id, exc)
-        await asyncio.sleep(0.3)
+    """Send images in paced batches with psychological timing.
 
-    follow_up = _PACK_FOLLOW_UP.get(pack_id, "enjoy")
+    Flow: opener → 1.5s → batch → 3s → batch → 3s → batch → 4s → closer
+    0.4s between each individual image within a batch.
+    """
+    config  = _PACK_DELIVERY.get(pack_id, _PACK_DELIVERY["pack_a"])
+    batches = config["batches"]
+
+    # Opener
     try:
-        await bot.send_message(chat_id=user_id, text=follow_up)
+        await bot.send_message(chat_id=user_id, text=config["opener"])
     except TelegramError as exc:
-        logger.warning("Could not send follow-up to user=%s: %s", user_id, exc)
+        logger.warning("Could not send opener to user=%s: %s", user_id, exc)
+    await asyncio.sleep(1.5)
+
+    # Images in batches
+    image_index = 1
+    for batch_num, batch_size in enumerate(batches):
+        for _ in range(batch_size):
+            try:
+                await bot.send_photo(
+                    chat_id=user_id,
+                    photo=f"https://picsum.photos/800/600?random={image_index}",
+                )
+            except TelegramError as exc:
+                logger.warning("Could not send image %d to user=%s: %s", image_index, user_id, exc)
+            image_index += 1
+            await asyncio.sleep(0.4)
+
+        # 3s pause between batches, skip after last batch
+        if batch_num < len(batches) - 1:
+            await asyncio.sleep(3.0)
+
+    # Pause before closer
+    await asyncio.sleep(4.0)
+
+    # Closer
+    try:
+        await bot.send_message(chat_id=user_id, text=config["closer"])
+    except TelegramError as exc:
+        logger.warning("Could not send closer to user=%s: %s", user_id, exc)
 
 
 async def deliver_pack(bot: Bot, user_id: int, pack_id: str, purchase_id: int) -> bool:
