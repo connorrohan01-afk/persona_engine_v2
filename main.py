@@ -1,6 +1,7 @@
 """
-Entry point — starts the Telegram bot, a FastAPI server (port 8080, payments.py),
-and a Flask webhook server (port 5001, webhook_handler.py) on the same process.
+Entry point — starts the Telegram bot and the FastAPI server (port 8080).
+All webhook routes (/webhook, /webhook/payment, /webhook/test) are served
+from payments.py via uvicorn on the single public port.
 """
 
 import asyncio
@@ -22,7 +23,6 @@ import admin_commands
 from admin import cmd_ban, cmd_force_deliver, cmd_stats
 from config import BOT_TOKEN
 from handlers import cmd_start, handle_callback, handle_message
-from webhook_handler import start_webhook_server
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -53,9 +53,6 @@ async def main():
     application.add_handler(CommandHandler("ban", cmd_ban))
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    # Start Flask payment webhook server (port 5001) in background thread
-    start_webhook_server(port=5001)
 
     # Inject application reference into payments module for webhook-triggered delivery
     payments.set_application(application)

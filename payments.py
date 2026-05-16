@@ -8,8 +8,10 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 import db
 from config import STRIPE_WEBHOOK_SECRET
@@ -25,8 +27,47 @@ def set_application(app):
     _app_ref = app
 
 
+def _parse_tier_payload(data: dict) -> tuple[str | None, int | None]:
+    """Extract tier and tg_id from a payment webhook payload."""
+    tier  = data.get("tier") or data.get("pack") or data.get("product")
+    tg_id = data.get("tg_id") or data.get("telegram_id") or data.get("user_id")
+    if tg_id is not None:
+        try:
+            tg_id = int(tg_id)
+        except (ValueError, TypeError):
+            tg_id = None
+    return tier, tg_id
+
+
+def _verify_webhook_signature(payload: bytes, received_sig: str) -> bool:
+    """HMAC-SHA256 signature check using WEBHOOK_SECRET env var.
+    Stub — replace internals with processor-specific logic for Segpay/CCBill.
+    """
+    secret = os.environ.get("WEBHOOK_SECRET", "")
+    if not secret:
+        logger.warning("WEBHOOK_SECRET not set — rejecting signed request")
+        return False
+    expected = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, received_sig)
+
+
+_TIER_TO_PACK: dict[str, str] = {
+    "basic":   "pack_a",
+    "starter": "pack_a",
+    "premium": "pack_b",
+    "vip":     "pack_c",
+}
+
+
 def make_fastapi_app() -> FastAPI:
     api = FastAPI()
+
+    api.add_middleware(
+        CORSMiddleware,
+        allow_origins=["https://ariaaccess.replit.app"],
+        allow_methods=["POST"],
+        allow_headers=["*"],
+    )
 
     @api.post("/webhook")
     async def stripe_webhook(request: Request):
@@ -54,6 +95,59 @@ def make_fastapi_app() -> FastAPI:
             await _handle_payment_intent_succeeded(event["data"]["object"])
 
         return Response(content="ok", status_code=200)
+
+    @api.post("/webhook/payment")
+    async def payment_webhook(request: Request):
+        """Production payment endpoint for Segpay/CCBill — requires X-Webhook-Signature."""
+        payload = await request.body()
+        sig = request.headers.get("X-Webhook-Signature", "")
+        if not _verify_webhook_signature(payload, sig):
+            logger.warning("Payment webhook signature failed from %s", request.client.host)
+            return Response(content="invalid signature", status_code=401)
+
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            return Response(content="bad json", status_code=400)
+
+        tier, tg_id = _parse_tier_payload(data)
+        pack_id = _TIER_TO_PACK.get((tier or "").lower())
+        if not pack_id or not tg_id:
+            return Response(content="missing tier or tg_id", status_code=400)
+
+        from delivery import deliver_basic_pack, deliver_premium_pack, deliver_vip_pack
+        _fn = {"pack_a": deliver_basic_pack, "pack_b": deliver_premium_pack, "pack_c": deliver_vip_pack}
+        success = await _fn[pack_id](tg_id)
+        logger.info("PAYMENT_WEBHOOK tier=%s tg_id=%s success=%s", tier, tg_id, success)
+        return Response(content=json.dumps({"ok": True, "delivered": success}),
+                        media_type="application/json")
+
+    @api.post("/webhook/test")
+    async def test_webhook(request: Request):
+        """
+        Test delivery endpoint — NO signature verification.
+        Accepts: {"tier": "basic"|"premium"|"vip", "tg_id": 123456789}
+
+        ╔══════════════════════════════════════════════════════════════╗
+        ║  TODO: REMOVE THIS ENDPOINT BEFORE FULL PRODUCTION LAUNCH.  ║
+        ╚══════════════════════════════════════════════════════════════╝
+        """
+        try:
+            data = json.loads(await request.body())
+        except json.JSONDecodeError:
+            return Response(content="bad json", status_code=400)
+
+        tier, tg_id = _parse_tier_payload(data)
+        pack_id = _TIER_TO_PACK.get((tier or "").lower())
+        if not pack_id or not tg_id:
+            return Response(content="missing tier or tg_id", status_code=400)
+
+        from delivery import deliver_basic_pack, deliver_premium_pack, deliver_vip_pack
+        _fn = {"pack_a": deliver_basic_pack, "pack_b": deliver_premium_pack, "pack_c": deliver_vip_pack}
+        success = await _fn[pack_id](tg_id)
+        logger.info("TEST_WEBHOOK tier=%s tg_id=%s success=%s", tier, tg_id, success)
+        return Response(content=json.dumps({"ok": True, "delivered": success}),
+                        media_type="application/json")
 
     return api
 
