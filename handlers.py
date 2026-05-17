@@ -833,7 +833,7 @@ async def _show_packs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     intro = await persona_message("offer_intro")
     if not intro or not intro.strip():
         intro = "Here's what's available for you:"
-    await _type_and_send(context.bot, chat_id, intro, reply_markup=packs_keyboard())
+    await _type_and_send(context.bot, chat_id, intro, reply_markup=packs_keyboard(user_id))
 
 
 # ── Exit ──────────────────────────────────────────────────────────────────────

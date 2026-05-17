@@ -12,14 +12,14 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     ]])
 
 
-def packs_keyboard() -> InlineKeyboardMarkup:
-    """Pack list — each button opens the Replit vault page directly (URL button, no callback)."""
+def packs_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Pack list — each button opens the Replit vault page with tg_id appended."""
     rows = []
     for pack in PACKS.values():
         rows.append([
             InlineKeyboardButton(
                 f"{pack['emoji']} {pack['name']} (${pack['price_usd']})",
-                url=pack["payment_link"],
+                url=f"{pack['payment_link']}?tg_id={user_id}",
             )
         ])
     return InlineKeyboardMarkup(rows)
