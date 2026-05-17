@@ -1,7 +1,9 @@
 """
-Entry point — starts the Telegram bot and the FastAPI server (port 8080).
+Entry point — starts the Telegram bot and the FastAPI server (port 5000).
 All webhook routes (/webhook, /webhook/payment, /webhook/test) are served
 from payments.py via uvicorn on the single public port.
+If the port is unavailable the webhook server is skipped and bot polling
+continues running normally.
 """
 
 import asyncio
@@ -37,7 +39,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-WEBHOOK_PORT = int(os.environ.get("PORT", 8080))
+WEBHOOK_PORT = int(os.environ.get("PORT", 5000))
 _LOCK_FILE = "/tmp/luna-bot.lock"
 
 
