@@ -5,6 +5,7 @@ from payments.py via uvicorn on the single public port.
 """
 
 import asyncio
+import errno
 import fcntl
 import logging
 import os
@@ -93,7 +94,7 @@ async def main():
     await application.updater.start_polling(drop_pending_updates=True)
     logger.info("Bot polling started")
 
-    # Start webhook server
+    # Start webhook server (optional — bot polling continues if port is unavailable)
     config = uvicorn.Config(
         fastapi_app,
         host="0.0.0.0",
@@ -105,6 +106,16 @@ async def main():
 
     try:
         await server.serve()
+    except OSError as exc:
+        if exc.errno == errno.EADDRINUSE:
+            logger.warning(
+                "Port %d already in use — webhook server skipped. "
+                "Bot polling continues normally.",
+                WEBHOOK_PORT,
+            )
+            await asyncio.Event().wait()  # block until process is killed
+        else:
+            raise
     finally:
         logger.info("Shutting down…")
         await application.updater.stop()
