@@ -8,9 +8,9 @@ continues running normally.
 
 import asyncio
 import errno
-import fcntl
 import logging
 import os
+import socket
 import sys
 
 import uvicorn
@@ -40,27 +40,33 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 WEBHOOK_PORT = int(os.environ.get("PORT", 5000))
-_LOCK_FILE = "/tmp/luna-bot.lock"
+
+# Internal lock port — not exposed publicly, only used to enforce single instance.
+# Binding a TCP socket is atomic and auto-released on process exit, which makes it
+# reliable in containerised environments where /tmp is not shared between processes.
+_LOCK_PORT = 19876
 
 
-def _acquire_instance_lock() -> object:
-    """Open an exclusive file lock so only one bot process can run at a time.
-    A second process that calls this will log an error and exit immediately,
-    which prevents telegram.error.Conflict from two pollers hitting the same token.
-    The lock is automatically released when the process exits (OS closes the fd).
+def _acquire_instance_lock() -> socket.socket:
+    """Bind a loopback socket as an exclusive single-instance lock.
+
+    If another instance is already running in this container the bind fails
+    immediately and the process exits cleanly — no Telegram Conflict.
+    The OS releases the socket (and the lock) automatically when the process ends.
     """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # Explicitly disable SO_REUSEADDR so the bind fails if the port is taken.
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
     try:
-        fp = open(_LOCK_FILE, "w")
-        fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        fp.write(str(os.getpid()))
-        fp.flush()
-        logger.info("Instance lock acquired (pid=%d)", os.getpid())
-        return fp  # keep reference alive — GC would release the lock
+        sock.bind(("127.0.0.1", _LOCK_PORT))
+        logger.info("Instance lock acquired on port %d (pid=%d)", _LOCK_PORT, os.getpid())
+        return sock  # keep reference alive — GC close would release the lock
     except OSError:
         logger.error(
-            "Another bot instance is already running — exiting to avoid Conflict. "
-            "Stop the other process first, or delete %s if it is stale.",
-            _LOCK_FILE,
+            "Another bot instance is already running (lock port %d busy) — "
+            "exiting to prevent Telegram Conflict error. "
+            "If no other instance is running, wait a few seconds and retry.",
+            _LOCK_PORT,
         )
         sys.exit(1)
 
