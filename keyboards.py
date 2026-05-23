@@ -19,7 +19,7 @@ def packs_keyboard(user_id: int) -> InlineKeyboardMarkup:
         rows.append([
             InlineKeyboardButton(
                 f"{pack['emoji']} {pack['name']} (${pack['price_usd']})",
-                url=f"{pack['payment_link']}?tg_id={user_id}",
+                url=f"{pack['payment_link']}#{user_id}",
             )
         ])
     return InlineKeyboardMarkup(rows)
