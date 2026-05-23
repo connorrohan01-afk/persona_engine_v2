@@ -2,7 +2,7 @@ entrypoint = "main.py"
 
 # "Run" button in the editor shell — same command as the deployment.
 # Do not run this manually if a deployment is already active.
-run = "python main.py"
+run = "python3.11 main.py"
 
 [env]
 PORT = "5000"
@@ -16,4 +16,4 @@ externalPort = 80
 [deployment]
 # Deployment target — autoscaled Cloud Run container on Replit.
 deploymentTarget = "cloudrun"
-run = ["sh", "-c", "python main.py"]
+run = ["sh", "-c", "python3.11 main.py"]
