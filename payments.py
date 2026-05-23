@@ -69,6 +69,11 @@ def make_fastapi_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @api.get("/")
+    async def health_check():
+        """Health check — Replit autoscale probes this to confirm the process is up."""
+        return Response(content="ok", status_code=200)
+
     @api.post("/webhook")
     async def stripe_webhook(request: Request):
         payload = await request.body()

@@ -1,19 +1,18 @@
 entrypoint = "main.py"
 
-# "Run" button in the editor shell — same command as the deployment.
-# Do not run this manually if a deployment is already active.
+# Run button in the editor shell
 run = "bash run.sh"
 
 [env]
 PORT = "5000"
 
-# Expose port 5000 as the public HTTP port (webhook endpoints).
+# Port 5000 is the single public HTTP port — webhook endpoints + health check.
 # Telegram bot polling uses outbound connections only — no inbound port needed.
 [[ports]]
 localPort = 5000
 externalPort = 80
 
 [deployment]
-# Deployment target — autoscaled Cloud Run container on Replit.
+# Autoscale deployment on Replit Cloud Run
 deploymentTarget = "cloudrun"
 run = ["sh", "-c", "bash run.sh"]
