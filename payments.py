@@ -147,9 +147,8 @@ def make_fastapi_app() -> FastAPI:
         if not pack_id or not tg_id:
             return Response(content="missing tier or tg_id", status_code=400)
 
-        from delivery import deliver_basic_pack, deliver_premium_pack, deliver_vip_pack
-        _fn = {"pack_a": deliver_basic_pack, "pack_b": deliver_premium_pack, "pack_c": deliver_vip_pack}
-        success = await _fn[pack_id](tg_id)
+        from delivery import force_deliver_tier
+        success = await force_deliver_tier(tg_id, pack_id)  # bypasses duplicate guard
         logger.info("TEST_WEBHOOK tier=%s tg_id=%s success=%s", tier, tg_id, success)
         return Response(content=json.dumps({"ok": True, "delivered": success}),
                         media_type="application/json")

@@ -155,6 +155,33 @@ async def _deliver_tier_with_token(user_id: int, pack_id: str) -> bool:
         return await deliver_pack(bot, user_id, pack_id, purchase_id)
 
 
+async def force_deliver_tier(user_id: int, pack_id: str) -> bool:
+    """Deliver pack_id to user_id bypassing the duplicate delivery guard.
+    Used by the test webhook only — production endpoints use _deliver_tier_with_token.
+    Always creates a fresh purchase record and sends images regardless of history.
+    """
+    if pack_id not in PACKS:
+        logger.error("force_deliver_tier: unknown pack_id=%s", pack_id)
+        return False
+    await db.upsert_user(user_id)
+    purchase_id = await db.create_purchase(
+        user_id=user_id,
+        pack_id=pack_id,
+        stripe_session="test_force",
+        amount_cents=PACKS[pack_id]["amount_cents"],
+    )
+    async with Bot(token=os.environ["TELEGRAM_BOT_TOKEN"]) as bot:
+        # Call _send_pack_images directly — skips deliver_pack's duplicate guard
+        await db.mark_delivered(purchase_id)
+        logger.info("FORCE_DELIVERY user=%s pack=%s purchase=%s", user_id, pack_id, purchase_id)
+        try:
+            await _send_pack_images(bot, user_id, pack_id)
+            return True
+        except Exception as exc:
+            logger.error("force_deliver_tier failed user=%s: %s", user_id, exc)
+            return False
+
+
 async def deliver_basic_pack(user_id: int) -> bool:
     """Deliver Starter/Basic pack (10 images) to user_id."""
     return await _deliver_tier_with_token(user_id, "pack_a")
